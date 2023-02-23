@@ -1,5 +1,5 @@
 import torch
-from torch.utils.data import distributed
+from torch.utils.data import distributed, DataLoader
 from torch.nn import parallel, LogSoftmax, Softmax
 from torch import optim
 from sklearn.metrics import accuracy_score
@@ -13,7 +13,7 @@ import pickle
 import torch.distributed as dist
 
 # Local import
-from .dataloader import Loader
+
 from .utils.functions import custom_loss_function
 
 logger = structlog.get_logger('__name__')
@@ -74,9 +74,9 @@ class Trainer():
         if datasets:
             logger.info('Loading training and validation set.')
             logger.info("Preparing the data.")
-            self.train_loader = Loader(train_set, batch_size=batch_size, shuffle=train_sampler is None,
+            self.train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=train_sampler is None,
                                        sampler=train_sampler)
-            self.val_loader = Loader(val_set, batch_size=batch_size, shuffle=True)
+            self.val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
             logger.debug(
                 "Processes {}/{} ({:.0f}%) of train data".format(
                     len(self.train_loader.sampler),
