@@ -6,7 +6,16 @@ authors = ["albertomerango <alberto.marengo@coeuraj.com>"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
-python = "^3.11"
+python = "^3.9.6"
+torch = "^1.13.1"
+tqdm = "^4.64.1"
+jupyter = "^1.0.0"
+matplotlib = "^3.7.0"
+structlog = "^22.3.0"
+awscli = "^1.27.77"
+boto3 = "^1.26.77"
+sagemaker = "^2.134.1"
+transformers = "^4.26.1"
 
 
 [build-system]
