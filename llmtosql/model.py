@@ -28,8 +28,10 @@ class WikiSQLModel(nn.Module):
         self.batch_norm = nn.BatchNorm1d(self.seq_length)
         self.out = nn.Linear(self.hidden_dim, 1)
 
-    def forward(self, data):
+    def tokenize(self, data):
         text_imp, columns_imp = data
+        if (type(text_imp) != list) and (type(columns_imp) != list):
+            text_imp, columns_imp = list(text_imp), list(columns_imp)
         if self.base_model == 'gpt':
             self.tokenizer.add_special_tokens({'pad_token': '<pad>'})
             self.model.resize_token_embeddings(len(self.tokenizer))
@@ -37,6 +39,10 @@ class WikiSQLModel(nn.Module):
             text_imp = [self.tokenizer.eos_token + ' ' + col_txt for col_txt in text_imp]
         text_tokenized = self.tokenizer(text_imp, padding='max_length', return_tensors='pt')
         columns_tokenized = self.tokenizer(columns_imp, padding='max_length', return_tensors='pt')
+        return (text_tokenized, columns_tokenized)
+
+    def forward(self, data):
+        text_tokenized, columns_tokenized = data
         with torch.no_grad():
             text_outputs = self.model(**text_tokenized)
             columns_outputs = self.model(**columns_tokenized)

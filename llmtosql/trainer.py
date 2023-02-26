@@ -25,6 +25,7 @@ class Trainer():
         logger.info('Config inputs.', config=config)
         allowed_kwargs = {"seed", "scheduler", "optimizer", "momentum", "weight_decay",
                           "lr", "criterion", "metric", "pred_function", "model_dir", "backend"}
+        self.validate = True
         self.validate_kwargs(config, allowed_kwargs)
         # Unpack kwargs
         self.epochs = epochs
@@ -43,7 +44,11 @@ class Trainer():
         if is_parallel:
             import smdistributed.dataparallel.torch.torch_smddp
         if datasets:
-            train_set, val_set = datasets
+            if len(datasets) == 2:
+                train_set, val_set = datasets
+            else:
+                train_set = datasets
+                self.validate = False
         torch.manual_seed(seed)
         self.model = model
         self.is_parallel = is_parallel
@@ -69,6 +74,10 @@ class Trainer():
                 train_sampler = None
             else:
                 logger.warning("Testing only available. No datasets in arguments.")
+        # if torch.backends.mps.is_available():
+        #     self.device = torch.device("mps")
+        # else:
+        #     self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
         logger.info(f'Training on device: {self.device}.')
         if datasets:
@@ -76,7 +85,8 @@ class Trainer():
             logger.info("Preparing the data.")
             self.train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=train_sampler is None,
                                        sampler=train_sampler)
-            self.val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
+            if self.validate:
+                self.val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
             logger.debug(
                 "Processes {}/{} ({:.0f}%) of train data".format(
                     len(self.train_loader.sampler),
@@ -84,13 +94,14 @@ class Trainer():
                     100.0 * len(self.train_loader.sampler) / len(self.train_loader.dataset),
                 )
             )
-            logger.debug(
-                "Processes {}/{} ({:.0f}%) of validation data".format(
-                    len(self.val_loader.sampler),
-                    len(self.val_loader.dataset),
-                    100.0 * len(self.val_loader.sampler) / len(self.val_loader.dataset),
+            if self.validate:
+                logger.debug(
+                    "Processes {}/{} ({:.0f}%) of validation data".format(
+                        len(self.val_loader.sampler),
+                        len(self.val_loader.dataset),
+                        100.0 * len(self.val_loader.sampler) / len(self.val_loader.dataset),
+                    )
                 )
-            )
         else:
             logger.warning("Testing only available. No datasets in arguments.")
         self.model = self.model.to(self.device)
@@ -177,11 +188,13 @@ class Trainer():
         running_loss = 0.
         running_metric = 0.
         with tqdm(self.train_loader, unit='batch') as tepoch:
-            for i, (inputs, targets) in enumerate(tepoch):
+            for i, data in enumerate(tepoch):
                 self.optimizer.zero_grad()
-                inputs = inputs.to(self.device)
-                targets = targets.to(self.device)
-                outputs = self.model(inputs)
+                inputs = data['input']
+                tokenized = self.model.tokenize(inputs)
+                tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
+                targets = data['labels']['sel'].to(self.device)
+                outputs = self.model(tokenized)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 loss.backward()
@@ -210,10 +223,12 @@ class Trainer():
         running_loss = 0.
         running_metric = 0.
         with tqdm(self.val_loader, unit='batch') as tepoch:
-            for (inputs, targets) in tepoch:
-                inputs = inputs.to(self.device)
-                targets = targets.to(self.device)
-                outputs = self.model(inputs)
+            for data in tepoch:
+                inputs = data['input']
+                tokenized = self.model.tokenize(inputs)
+                tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
+                targets = data['labels']['sel'].to(self.device)
+                outputs = self.model(tokenized)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
@@ -246,8 +261,9 @@ class Trainer():
             logger.info(f"{'-' * 30} EPOCH {epoch} / {self.epochs} {'-' * 30}")
             self._train_one_epoch(epoch)
             self.clear()
-            self._validate_one_epoch()
-            self.clear()
+            if self.validate:
+                self._validate_one_epoch()
+                self.clear()
             # Save model on master node.
             if self.is_parallel:
                 if dist.get_rank() == 0:
@@ -257,11 +273,13 @@ class Trainer():
             if self.metric:
                 logger.info(f"train loss: {self.train_losses[-1]} - "
                             f"train {self.metric}: {self.train_metrics[-1]}")
-                logger.info(f"valid loss: {self.val_losses[-1]} - "
-                            f"valid {self.metric}: {self.val_metrics[-1]}\n\n")
+                if self.validate:
+                    logger.info(f"valid loss: {self.val_losses[-1]} - "
+                                f"valid {self.metric}: {self.val_metrics[-1]}\n\n")
             else:
                 logger.info(f"train loss: {self.train_losses[-1]}")
-                logger.info(f"valid loss: {self.val_losses[-1]}\n\n")
+                if self.validate:
+                    logger.info(f"valid loss: {self.val_losses[-1]}\n\n")
         self.history = {
             'epochs': [*range(1, self.epochs + 1)],
             'train_loss': self.train_losses,
@@ -281,10 +299,12 @@ class Trainer():
         running_loss = 0.
         running_metric = 0.
         with tqdm(test_loader, unit='batch') as tepoch:
-            for (inputs, targets) in tepoch:
-                inputs = inputs.to(device)
-                targets = targets.to(device)
-                outputs = model(inputs)
+            for data in tepoch:
+                inputs = data['input']
+                tokenized = self.model.tokenize(inputs)
+                tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
+                targets = data['labels']['sel'].to(self.device)
+                outputs = self.model(tokenized)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
