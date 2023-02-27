@@ -1,33 +1,22 @@
+from llmtosql.model import WikiSQLModel
+from llmtosql.trainer import Trainer
+from llmtosql.dataloader import WikiSQLDataset
+from llmtosql.utils.utils import plot_history, load_model, load_history
 import argparse
+import sys
 import os
 import json
-import torchvision
-from src.model import MLModel
-from src.trainer import Trainer
+sys.path.insert(0, '..')
+path = '../WikiSQL/data/dev.jsonl'
 
 
 def main(args):
     # Insert CODE HERE:
     # EXAMPLE
-    if args.custom_function:
-        from src.utils.functions import custom_pre_process_function
-        train_set = torchvision.datasets.CIFAR10(root=args.data_dir,
-                                                 train=True,
-                                                 download=False,
-                                                 transform=custom_pre_process_function())
-        val_set = torchvision.datasets.CIFAR10(root=args.data_dir,
-                                               train=False,
-                                               download=False,
-                                               transform=custom_pre_process_function())
-    else:
-        train_set = torchvision.datasets.CIFAR10(root=args.data_dir,
-                                                 train=True,
-                                                 download=False)
-        val_set = torchvision.datasets.CIFAR10(root=args.data_dir,
-                                               train=False,
-                                               download=False)
+    train_set = WikiSQLDataset(type='train')
+    val_set = WikiSQLDataset(type='dev')
     datasets = (train_set, val_set)
-    model = MLModel()
+    model = WikiSQLModel(base_model_type='bert-base-cased')
     config = {
         'seed': args.seed,
         'scheduler': args.scheduler,
@@ -41,7 +30,7 @@ def main(args):
         'model_dir': args.model_dir,
         'backend': args.backend
     }
-    trainer = Trainer(model, datasets=datasets, epochs=250, batch_size=32,
+    trainer = Trainer(model, datasets=datasets, epochs=10, batch_size=32,
                       is_parallel=True, save_history=True, **config)
     trainer.fit()
 
