@@ -10,7 +10,7 @@ class WikiSQLModel(nn.Module):
     def __init__(self, base_model_type, N_lat=None, attention_type='cross'):
         super().__init__()
         self.attention_type = attention_type
-        logger.info(f'Using {} attention mechanism')
+        logger.info(f'Using {attention_type} attention mechanism')
         if not base_model_type:
             logger.error(f'{type(base_model_type)}  not valid')
             raise TypeError(f'{type(base_model_type)}  not valid')

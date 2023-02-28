@@ -275,11 +275,11 @@ class Trainer():
                             f"train {self.metric}: {self.train_metrics[-1]}")
                 if self.validate:
                     logger.info(f"valid loss: {self.val_losses[-1]} - "
-                                f"valid {self.metric}: {self.val_metrics[-1]}\n\n")
+                                f"valid {self.metric}: {self.val_metrics[-1]}\n")
             else:
                 logger.info(f"train loss: {self.train_losses[-1]}")
                 if self.validate:
-                    logger.info(f"valid loss: {self.val_losses[-1]}\n\n")
+                    logger.info(f"valid loss: {self.val_losses[-1]}\n")
         self.history = {
             'epochs': [*range(1, self.epochs + 1)],
             'train_loss': self.train_losses,
