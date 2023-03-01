@@ -28,7 +28,7 @@ class WikiSQLModel(nn.Module):
             self.hidden_dim = self.model.config.hidden_size
         if self.attention_type == 'cross':
             self.cross_att = nn.MultiheadAttention(self.hidden_dim, 8, batch_first=True)
-            self.batch_norm = nn.BatchNorm1d(self.seq_length)
+            self.batch_norm = nn.BatchNorm1d(self.hidden_dim)
             self.out = nn.Linear(self.hidden_dim, 1)
         elif self.attention_type == 'sqlnet':
             # FROM SQLNET
@@ -63,8 +63,8 @@ class WikiSQLModel(nn.Module):
         columns_last_hs = columns_outputs.last_hidden_state
         if self.attention_type == 'cross':
             attn_output, _ = self.cross_att(columns_last_hs, text_last_hs, text_last_hs)
-            cross_attention_norm = self.batch_norm(attn_output)
-            cross_layer_out = torch.add(columns_last_hs, cross_attention_norm)
+            cross_attention_norm = self.batch_norm(torch.transpose(attn_output, 1, 2))
+            cross_layer_out = torch.add(columns_last_hs, torch.transpose(cross_attention_norm, 1, 2))
             ret = self.out(cross_layer_out).squeeze()
             return self.compose_outputs(columns_tokenized, ret)
         elif self.attention_type == 'sqlnet':
