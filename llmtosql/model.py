@@ -7,9 +7,10 @@ logger = structlog.get_logger('__name__')
 
 
 class WikiSQLModel(nn.Module):
-    def __init__(self, base_model_type, N_lat=None, attention_type='cross'):
+    def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False):
         super().__init__()
         self.attention_type = attention_type
+        self.col_drop = col_drop
         logger.info(f'Using {attention_type} attention mechanism')
         if not base_model_type:
             logger.error(f'{type(base_model_type)}  not valid')
@@ -45,6 +46,9 @@ class WikiSQLModel(nn.Module):
         text_imp, columns_imp = data
         if (type(text_imp) != list) and (type(columns_imp) != list):
             text_imp, columns_imp = list(text_imp), list(columns_imp)
+        if self.col_drop:
+            columns_imp = self.reduce_col_name(columns_imp)
+        text_imp = [text + ' ' + columns for text, columns in zip(text_imp, columns_imp)]
         if self.base_model == 'gpt':
             self.tokenizer.add_special_tokens({'pad_token': '<pad>'})
             self.model.resize_token_embeddings(len(self.tokenizer))
@@ -75,7 +79,10 @@ class WikiSQLModel(nn.Module):
             K_sel_expand = K_sel.unsqueeze(1)
             sel_score = self.sel_out(self.sel_out_K(K_sel_expand) +
                                      self.sel_out_col(columns_last_hs)).squeeze()
-            return self.compose_outputs(columns_tokenized, sel_score)
+            if self.col_drop:
+                return sel_score
+            else:
+                return self.compose_outputs(columns_tokenized, sel_score)
 
     def compose_outputs(self, col_vector, final_vector):
         comma = self.tokenizer.convert_tokens_to_ids(',')
@@ -83,7 +90,7 @@ class WikiSQLModel(nn.Module):
         dim_1 = torch.max(torch.unique(comma_idx[0], return_counts=True)[1]).item() + 1
         dim_0 = len(col_vector['input_ids'])
         out = torch.zeros([dim_0, dim_1], dtype=torch.float32)
-        slice_start = 0
+        slice_start = 1 #0
         current_idx = 0
         y = 0
         for idx in range(comma_idx[0].shape[0]):
@@ -92,10 +99,20 @@ class WikiSQLModel(nn.Module):
             if x != current_idx:
                 out[x-1][y] = final_vector[x-1][slice_start:].sum()
                 y = 0
-                slice_start = 0
+                slice_start = 1 #0
                 current_idx = x
             out[x][y] = final_vector[x][slice_start:slice_end].sum()
             slice_start = slice_end + 1
             y += 1
         out[x][y] = final_vector[x][slice_start:].sum()
         return out
+
+    def reduce_col_name(self, col_list):
+        new_col_list = []
+        for columns in col_list:
+            col_text = columns.split(',')
+            new_col = ''
+            for column in col_text:
+                new_col += column.split()[0] + ' '
+            new_col_list.append(new_col.strip())
+        return new_col_list
