@@ -54,7 +54,7 @@ class WikiSQLModel(nn.Module):
             text_imp = [self.tokenizer.eos_token + ' ' + col_txt for col_txt in text_imp]
         text_tokenized = self.tokenizer(text_imp, padding='max_length', return_tensors='pt')
         columns_tokenized = self.tokenizer(columns_imp, padding='max_length', return_tensors='pt')
-        return (text_tokenized, columns_tokenized)
+        return text_tokenized, columns_tokenized
 
     def forward(self, data):
         text_tokenized, columns_tokenized = data
