@@ -1,0 +1,9 @@
+torch
+tqdm
+jupyter
+matplotlib
+structlog
+awscli
+boto3
+sagemaker
+transformers

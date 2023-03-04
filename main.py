@@ -6,8 +6,7 @@ import argparse
 import sys
 import os
 import json
-sys.path.insert(0, '..')
-path = '../WikiSQL/data/dev.jsonl'
+model_path = 'models/transformers/'
 
 
 def main(args):
@@ -16,7 +15,7 @@ def main(args):
     train_set = WikiSQLDataset(type='train')
     val_set = WikiSQLDataset(type='dev')
     datasets = (train_set, val_set)
-    model = WikiSQLModel(base_model_type='bert-base-cased')
+    model = WikiSQLModel(base_model_type=model_path, attention_type='sqlnet', col_drop=True)
     config = {
         'seed': args.seed,
         'scheduler': args.scheduler,

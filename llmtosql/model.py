@@ -44,8 +44,6 @@ class WikiSQLModel(nn.Module):
 
     def tokenize(self, data):
         text_imp, columns_imp = data
-        if (type(text_imp) != list) and (type(columns_imp) != list):
-            text_imp, columns_imp = list(text_imp), list(columns_imp)
         if self.col_drop:
             columns_imp = self.reduce_col_name(columns_imp)
         text_imp = [text + ' ' + columns for text, columns in zip(text_imp, columns_imp)]
@@ -65,6 +63,8 @@ class WikiSQLModel(nn.Module):
             columns_outputs = self.model(**columns_tokenized)
         text_last_hs = text_outputs.last_hidden_state
         columns_last_hs = columns_outputs.last_hidden_state
+        text_last_hs = text_last_hs[:, 1:, :]
+        columns_last_hs = columns_last_hs[:, 1:, :]
         if self.attention_type == 'cross':
             attn_output, _ = self.cross_att(columns_last_hs, text_last_hs, text_last_hs)
             cross_attention_norm = self.batch_norm(torch.transpose(attn_output, 1, 2))
@@ -97,22 +97,28 @@ class WikiSQLModel(nn.Module):
             slice_end = comma_idx[1][idx].item()
             x = comma_idx[0][idx].item()
             if x != current_idx:
-                out[x-1][y] = final_vector[x-1][slice_start:].sum()
+                out[x-1][y] = final_vector[x-1][slice_start:].mean()
                 y = 0
                 slice_start = 1 #0
                 current_idx = x
-            out[x][y] = final_vector[x][slice_start:slice_end].sum()
+            out[x][y] = final_vector[x][slice_start:slice_end].mean()
             slice_start = slice_end + 1
             y += 1
-        out[x][y] = final_vector[x][slice_start:].sum()
+        out[x][y] = final_vector[x][slice_start:].mean()
         return out
 
-    def reduce_col_name(self, col_list):
-        new_col_list = []
-        for columns in col_list:
-            col_text = columns.split(',')
-            new_col = ''
-            for column in col_text:
-                new_col += column.split()[0] + ' '
-            new_col_list.append(new_col.strip())
-        return new_col_list
+    def reduce_col_name(self, columns):
+        if isinstance(columns, list):
+            new_columns = []
+            for cols in columns:
+                col_text = cols.split(',')
+                new_col = ''
+                for column in col_text:
+                    new_col += column.split()[0] + ' '
+                new_columns.append(new_col.strip())
+        else:
+            new_columns = ''
+            for column in columns.split(','):
+                new_columns += column.split()[0] + ' '
+            new_columns = new_columns.strip()
+        return new_columns

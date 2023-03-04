@@ -190,11 +190,11 @@ class Trainer():
         with tqdm(self.train_loader, unit='batch') as tepoch:
             for i, data in enumerate(tepoch):
                 self.optimizer.zero_grad()
-                inputs = data['input']
-                tokenized = self.model.tokenize(inputs)
-                tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
+                inputs = data['tokenized_input'].to(self.device)
+                # tokenized = self.model.tokenize(inputs)
+                # tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
                 targets = data['labels']['sel'].to(self.device)
-                outputs = self.model(tokenized)
+                outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 loss.backward()
@@ -224,11 +224,11 @@ class Trainer():
         running_metric = 0.
         with tqdm(self.val_loader, unit='batch') as tepoch:
             for data in tepoch:
-                inputs = data['input']
-                tokenized = self.model.tokenize(inputs)
-                tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
+                inputs = data['tokenized_input'].to(self.device)
+                # tokenized = self.model.tokenize(inputs)
+                # tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
                 targets = data['labels']['sel'].to(self.device)
-                outputs = self.model(tokenized)
+                outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
@@ -300,11 +300,11 @@ class Trainer():
         running_metric = 0.
         with tqdm(test_loader, unit='batch') as tepoch:
             for data in tepoch:
-                inputs = data['input']
-                tokenized = self.model.tokenize(inputs)
-                tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
+                inputs = data['tokenized_input'].to(self.device)
+                # tokenized = self.model.tokenize(inputs)
+                # tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
                 targets = data['labels']['sel'].to(self.device)
-                outputs = self.model(tokenized)
+                outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
