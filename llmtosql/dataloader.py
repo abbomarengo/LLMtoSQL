@@ -47,13 +47,11 @@ class WikiSQLDataset(Dataset):
                 'table_id': str(table),
                 'columns': columns,
                 'input': (str(input), str(columns)),
-                'tokenized_inputs': tokenized_inputs,
-                # 'tokenized_inputs': {
-                #     'q_tok': tokenized_inputs[0][0],
-                #     'q_mask': tokenized_inputs[0][1],
-                #     'col_tok': tokenized_inputs[1][0],
-                #     'col_mask': tokenized_inputs[1][1]
-                # },
+                # 'tokenized_inputs': tokenized_inputs,
+                'tokenized_inputs': {
+                    'question': tokenized_inputs[0],
+                    'columns': tokenized_inputs[1]
+                },
                 'labels': {
                     'sel': int(sel),
                     'agg': int(agg),

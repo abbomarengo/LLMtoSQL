@@ -44,6 +44,8 @@ class WikiSQLModel(nn.Module):
 
     def tokenize(self, data):
         text_imp, columns_imp = data
+        if isinstance(text_imp, str) and isinstance(columns_imp, str):
+            text_imp, columns_imp = [text_imp], [columns_imp]
         if self.col_drop:
             columns_imp = self.reduce_col_name(columns_imp)
         text_imp = [text + ' ' + columns for text, columns in zip(text_imp, columns_imp)]
