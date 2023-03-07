@@ -7,11 +7,10 @@ import sys
 import os
 import json
 model_path = 'models/transformers/'
+sys.path.insert(0, '..')
 
 
 def main(args):
-    # Insert CODE HERE:
-    # EXAMPLE
     model = WikiSQLModel(base_model_type=model_path, attention_type='sqlnet', col_drop=True)
     train_set = WikiSQLDataset(type='train', model=model)
     val_set = WikiSQLDataset(type='dev', model=model)

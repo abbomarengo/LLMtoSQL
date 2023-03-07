@@ -2,6 +2,7 @@ from transformers import AutoModel, AutoTokenizer
 import torch
 from torch import nn
 import structlog
+import os
 
 logger = structlog.get_logger('__name__')
 
@@ -20,8 +21,11 @@ class WikiSQLModel(nn.Module):
         elif 'bert' in base_model_type:
             self.base_model = 'bert'
         else:
-            logger.error(f'Model type not valid - {base_model_type}')
-            raise TypeError(f'Model type not valid - {base_model_type}')
+            if os.path.isdir(base_model_type):
+                pass
+            else:
+                logger.error(f'Model type not valid - {base_model_type}')
+                raise TypeError(f'Model type not valid - {base_model_type}')
         self.tokenizer = AutoTokenizer.from_pretrained(base_model_type)
         self.model = AutoModel.from_pretrained(base_model_type)
         self.seq_length = self.model.config.max_position_embeddings
