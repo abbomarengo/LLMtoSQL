@@ -105,7 +105,7 @@ class Trainer():
             cuda = "cuda:"+local_rank
             self.device = torch.device(cuda)
             self.model = self.model.to(self.device)
-            self.model = parallel.DistributedDataParallel(self.model)
+            self.model = parallel.DistributedDataParallel(self.model, find_unused_parameters=True)
         else:
             # if torch.backends.mps.is_available():
             #     self.device = torch.device("mps")
