@@ -8,7 +8,7 @@ logger = structlog.get_logger('__name__')
 
 
 class WikiSQLModel(nn.Module):
-    def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False):
+    def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False, local_model_type=None):
         super().__init__()
         self.attention_type = attention_type
         self.col_drop = col_drop
@@ -22,7 +22,13 @@ class WikiSQLModel(nn.Module):
             self.base_model = 'bert'
         else:
             if os.path.isdir(base_model_type):
-                pass
+                if 'gpt' in local_model_type:
+                    self.base_model = 'gpt'
+                elif 'bert' in local_model_type:
+                    self.base_model = 'bert'
+                else:
+                    logger.error('A local directory was passed. Need to identify the model - pass local_model_type')
+                    raise TypeError('A local directory was passed. Need to identify the model - pass local_model_type')
             else:
                 logger.error(f'Model type not valid - {base_model_type}')
                 raise TypeError(f'Model type not valid - {base_model_type}')
