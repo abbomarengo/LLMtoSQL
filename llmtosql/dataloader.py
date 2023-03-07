@@ -1,4 +1,5 @@
 from torch.utils.data import Dataset
+from transformers import BatchEncoding
 import numpy as np
 import os
 import structlog
@@ -49,8 +50,8 @@ class WikiSQLDataset(Dataset):
                 'input': (str(input), str(columns)),
                 # 'tokenized_inputs': tokenized_inputs,
                 'tokenized_inputs': {
-                    'question': tokenized_inputs[0],
-                    'columns': tokenized_inputs[1]
+                    'question': BatchEncoding({k: v.squeeze() for k,v in tokenized_inputs[0].items()}),
+                    'columns': BatchEncoding({k: v.squeeze() for k,v in tokenized_inputs[1].items()})
                 },
                 'labels': {
                     'sel': int(sel),

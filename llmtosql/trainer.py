@@ -74,12 +74,6 @@ class Trainer():
                 train_sampler = None
             else:
                 logger.warning("Testing only available. No datasets in arguments.")
-        # if torch.backends.mps.is_available():
-        #     self.device = torch.device("mps")
-        # else:
-        #     self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        logger.info(f'Training on device: {self.device}.')
         if datasets:
             logger.info('Loading training and validation set.')
             logger.info("Preparing the data.")
@@ -104,12 +98,21 @@ class Trainer():
                 )
         else:
             logger.warning("Testing only available. No datasets in arguments.")
-        self.model = self.model.to(self.device)
         if self.is_parallel:
             self.model = parallel.DistributedDataParallel(self.model)
             local_rank = os.environ["LOCAL_RANK"]
             torch.cuda.set_device(int(local_rank))
-            self.model.cuda(int(local_rank))
+            # self.model.cuda(int(local_rank))
+            cuda = "cuda:"+local_rank
+            self.device = torch.device(cuda)
+        else:
+            # if torch.backends.mps.is_available():
+            #     self.device = torch.device("mps")
+            # else:
+            #     self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+        logger.info(f'Training on device: {self.device}.')
+        self.model = self.model.to(self.device)
         criterion = self._get_criterion()
         self.criterion = criterion.to(self.device)
         self.optimizer = self._get_optimizer()
@@ -190,11 +193,8 @@ class Trainer():
         with tqdm(self.train_loader, unit='batch') as tepoch:
             for i, data in enumerate(tepoch):
                 self.optimizer.zero_grad()
-                inputs = data['tokenized_input'].to(self.device)
-                # tokenized = self.model.tokenize(inputs)
-                # tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
+                outputs = self.model_forward(data)
                 targets = data['labels']['sel'].to(self.device)
-                outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 loss.backward()
@@ -207,7 +207,7 @@ class Trainer():
                                        metric=running_metric / len(self.train_loader))
                 else:
                     tepoch.set_postfix(loss=loss.item())
-                del inputs, targets, outputs, loss
+                del targets, outputs, loss
         if self.scheduler_type == 'StepLR':
             self.scheduler.step()
         train_loss = running_loss / len(self.train_loader)
@@ -224,11 +224,8 @@ class Trainer():
         running_metric = 0.
         with tqdm(self.val_loader, unit='batch') as tepoch:
             for data in tepoch:
-                inputs = data['tokenized_input'].to(self.device)
-                # tokenized = self.model.tokenize(inputs)
-                # tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
+                outputs = self.model_forward(data)
                 targets = data['labels']['sel'].to(self.device)
-                outputs = self.model(inputs)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
@@ -237,7 +234,7 @@ class Trainer():
                                        metric=running_metric / len(self.val_loader))
                 else:
                     tepoch.set_postfix(loss=loss.item())
-                del inputs, targets, outputs, loss
+                del targets, outputs, loss
         val_loss = running_loss / len(self.val_loader)
         self.val_losses.append(val_loss)
         if self.metric:
@@ -294,17 +291,13 @@ class Trainer():
 
     def test(self, model, test_loader):
         logger.info("Testing..")
-        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        model = model.to(device)
+        model = model.to(self.device)
         running_loss = 0.
         running_metric = 0.
         with tqdm(test_loader, unit='batch') as tepoch:
             for data in tepoch:
-                inputs = data['tokenized_input'].to(self.device)
-                # tokenized = self.model.tokenize(inputs)
-                # tokenized = (tokenized[0].to(self.device), tokenized[1].to(self.device))
                 targets = data['labels']['sel'].to(self.device)
-                outputs = self.model(inputs)
+                outputs = self.model_forward(data, model=model)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
@@ -313,7 +306,7 @@ class Trainer():
                                        metric=running_metric / len(test_loader))
                 else:
                     tepoch.set_postfix(loss=loss.item())
-                del inputs, targets, outputs, loss
+                del targets, outputs, loss
         test_loss = running_loss / len(test_loader)
         if self.metric:
             test_metric = running_metric / len(test_loader)
@@ -329,3 +322,13 @@ class Trainer():
         for kwarg in kwargs:
             if kwarg not in allowed_kwargs:
                 raise TypeError(error_message, kwarg)
+
+    def model_forward(self, data, model=None):
+        inputs = (data['tokenized_inputs']['question'].to(self.device),
+                  data['tokenized_inputs']['columns'].to(self.device))
+        if model:
+            outputs = model(inputs)
+        else:
+            outputs = self.model(inputs)
+        del inputs
+        return outputs

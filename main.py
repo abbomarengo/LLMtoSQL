@@ -12,10 +12,10 @@ model_path = 'models/transformers/'
 def main(args):
     # Insert CODE HERE:
     # EXAMPLE
-    train_set = WikiSQLDataset(type='train')
-    val_set = WikiSQLDataset(type='dev')
-    datasets = (train_set, val_set)
     model = WikiSQLModel(base_model_type=model_path, attention_type='sqlnet', col_drop=True)
+    train_set = WikiSQLDataset(type='train', model=model)
+    val_set = WikiSQLDataset(type='dev', model=model)
+    datasets = (train_set, val_set)
     config = {
         'seed': args.seed,
         'scheduler': args.scheduler,
@@ -29,7 +29,7 @@ def main(args):
         'model_dir': args.model_dir,
         'backend': args.backend
     }
-    trainer = Trainer(model, datasets=datasets, epochs=10, batch_size=32,
+    trainer = Trainer(model, datasets=datasets, epochs=25, batch_size=32,
                       is_parallel=True, save_history=True, **config)
     trainer.fit()
 
