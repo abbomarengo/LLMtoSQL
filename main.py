@@ -7,7 +7,6 @@ import sys
 import os
 import json
 model_path = 'models/transformers/'
-sys.path.insert(0, '..')
 
 
 def main(args):
