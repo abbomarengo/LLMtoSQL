@@ -99,20 +99,21 @@ class Trainer():
         else:
             logger.warning("Testing only available. No datasets in arguments.")
         if self.is_parallel:
-            self.model = parallel.DistributedDataParallel(self.model)
             local_rank = os.environ["LOCAL_RANK"]
             torch.cuda.set_device(int(local_rank))
             # self.model.cuda(int(local_rank))
             cuda = "cuda:"+local_rank
             self.device = torch.device(cuda)
+            self.model = self.model.to(self.device)
+            self.model = parallel.DistributedDataParallel(self.model)
         else:
             # if torch.backends.mps.is_available():
             #     self.device = torch.device("mps")
             # else:
             #     self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            self.model = self.model.to(self.device)
         logger.info(f'Training on device: {self.device}.')
-        self.model = self.model.to(self.device)
         criterion = self._get_criterion()
         self.criterion = criterion.to(self.device)
         self.optimizer = self._get_optimizer()
