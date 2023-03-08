@@ -1,6 +1,7 @@
 from transformers import AutoModel, AutoTokenizer
 import torch
 from torch import nn
+from torch.nn.parameter import Parameter
 import structlog
 import os
 
@@ -10,6 +11,7 @@ logger = structlog.get_logger('__name__')
 class WikiSQLModel(nn.Module):
     def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False, local_model_type=None):
         super().__init__()
+        self.parameter = Parameter(torch.empty((1, 1)))
         self.attention_type = attention_type
         self.col_drop = col_drop
         logger.info(f'Using {attention_type} attention mechanism')
@@ -79,9 +81,11 @@ class WikiSQLModel(nn.Module):
         columns_last_hs = columns_last_hs[:, 1:, :]
         if self.attention_type == 'cross':
             attn_output, _ = self.cross_att(columns_last_hs, text_last_hs, text_last_hs)
-            cross_attention_norm = self.batch_norm(torch.transpose(attn_output, 1, 2))
-            cross_layer_out = torch.add(columns_last_hs, torch.transpose(cross_attention_norm, 1, 2))
-            ret = self.out(cross_layer_out).squeeze()
+            # cross_attention_norm = self.batch_norm(torch.transpose(attn_output, 1, 2))
+            # cross_layer_out = torch.add(columns_last_hs, torch.transpose(cross_attention_norm, 1, 2))
+            cross_attention_add = torch.add(columns_last_hs, attn_output)
+            cross_attention_norm = self.batch_norm(torch.transpose(cross_attention_add, 1, 2))
+            ret = self.out(torch.transpose(cross_attention_norm, 1, 2)).squeeze()
             return self.compose_outputs(columns_tokenized, ret)
         elif self.attention_type == 'sqlnet':
             # FROM SQLNET
@@ -99,10 +103,19 @@ class WikiSQLModel(nn.Module):
     def compose_outputs(self, col_vector, final_vector):
         comma = self.tokenizer.convert_tokens_to_ids(',')
         comma_idx = (col_vector['input_ids'] == comma).nonzero(as_tuple=True)
+        comma_idx = (
+            comma_idx[0],
+            comma_idx[1] - 1
+        )
         dim_1 = torch.max(torch.unique(comma_idx[0], return_counts=True)[1]).item() + 1
         dim_0 = len(col_vector['input_ids'])
-        out = torch.zeros([dim_0, dim_1], dtype=torch.float32)
-        slice_start = 1 #0
+        device_n = self.parameter.get_device()
+        if self.parameter.is_cuda:
+            device = 'cuda:' + str(device_n) if device_n != -1 else 'cpu'
+        else:
+            device = 'mps:' + str(device_n) if device_n != -1 else 'cpu'
+        out = torch.zeros([dim_0, dim_1], dtype=torch.float32, device=device)
+        slice_start = 0
         current_idx = 0
         y = 0
         for idx in range(comma_idx[0].shape[0]):
@@ -111,7 +124,7 @@ class WikiSQLModel(nn.Module):
             if x != current_idx:
                 out[x-1][y] = final_vector[x-1][slice_start:].mean()
                 y = 0
-                slice_start = 1 #0
+                slice_start = 0
                 current_idx = x
             out[x][y] = final_vector[x][slice_start:slice_end].mean()
             slice_start = slice_end + 1
