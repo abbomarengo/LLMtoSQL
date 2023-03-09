@@ -23,8 +23,8 @@ class WikiSQLSelect(WikiSQLBase):
             self.sel_out = nn.Sequential(nn.Tanh(), nn.Linear(self.hidden_dim, 1))
             self.softmax = nn.Softmax(dim=-1)
         else:
-            logger.error(f'{type(self.attention_type)}  not valid')
-            raise TypeError(f'{type(self.attention_type)}  not valid')
+            logger.error(f'Was not able to load SELECT module -  {type(self.attention_type)}  not valid')
+            raise TypeError(f'Was not able to load SELECT module -  {type(self.attention_type)}  not valid')
 
     def forward(self, data):
         text_tokenized, columns_tokenized = data
