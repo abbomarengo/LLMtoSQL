@@ -4,6 +4,7 @@ from torch import nn
 from torch.nn.parameter import Parameter
 import structlog
 from .utils.modules.select import WikiSQLSelect
+from .utils.modules.aggregation import WikiSQLSAgg
 
 logger = structlog.get_logger('__name__')
 
@@ -15,10 +16,12 @@ class WikiSQLModel(nn.Module):
         self.model = AutoModel.from_pretrained(self.base_model_type)
         self.seq_length = self.model.config.max_position_embeddings
         self.sel_layer = WikiSQLSelect()
+        self.agg_layer = WikiSQLSAgg()
 
     def forward(self, data):
         sel_out = self.sel_layer(data)
-        return sel_out
+        agg_out = self.agg_layer(data)
+        return sel_out, agg_out
 
     def tokenize(self, data):
         text_imp, columns_imp = data
