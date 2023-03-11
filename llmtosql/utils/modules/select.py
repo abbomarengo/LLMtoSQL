@@ -1,16 +1,17 @@
 import torch
 from torch import nn
-from .base_model import WikiSQLBase
 import structlog
 
 logger = structlog.get_logger('__name__')
 
 
-class WikiSQLSelect(WikiSQLBase):
-    def __init__(self):
+class WikiSQLSelect(nn.Module):
+    def __init__(self, model, hidden_dim, attention_type, col_drop):
         super().__init__()
-        if not self.N_lat:
-            self.hidden_dim = self.model.config.hidden_size
+        self.model = model
+        self.hidden_dim = hidden_dim
+        self.attention_type = attention_type
+        self.col_drop = col_drop
         if self.attention_type == 'cross':
             self.cross_att = nn.MultiheadAttention(self.hidden_dim, 8, batch_first=True)
             self.batch_norm = nn.BatchNorm1d(self.hidden_dim)

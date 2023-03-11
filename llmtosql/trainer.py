@@ -20,12 +20,13 @@ logger = structlog.get_logger('__name__')
 
 
 class Trainer():
-    def __init__(self, model, datasets=None, epochs=None, batch_size=None,
+    def __init__(self, model, datasets=None, epochs=None, batch_size=None, n_metrics=1,
                  is_parallel=False, save_history=False, **config):
         logger.info('Config inputs.', config=config)
         allowed_kwargs = {"seed", "scheduler", "optimizer", "momentum", "weight_decay",
                           "lr", "criterion", "metric", "pred_function", "model_dir", "backend"}
         self.validate = True
+        self.n_metrics = n_metrics
         self.validate_kwargs(config, allowed_kwargs)
         # Unpack kwargs
         self.epochs = epochs
@@ -115,7 +116,10 @@ class Trainer():
             self.model = self.model.to(self.device)
         logger.info(f'Training on device: {self.device}.')
         criterion = self._get_criterion()
-        self.criterion = criterion.to(self.device)
+        if self.criterion_type != 'custom':
+            self.criterion = criterion.to(self.device)
+        else:
+            self.criterion = criterion
         self.optimizer = self._get_optimizer()
         self.scheduler_options = {
             'CosineAnnealingWarmRestarts': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=5,
@@ -137,31 +141,41 @@ class Trainer():
 
     def _get_optimizer(self):
         if self.optimizer_type == 'sgd':
+            logger.info('Using SGD optimizer')
             return optim.SGD(self.model.parameters(), lr=self.lr,
                              momentum=self.momentum, weight_decay=self.weight_decay)
         if self.optimizer_type == 'adam':
+            logger.info('Using ADAM optimizer')
             return optim.Adam(self.model.parameters(), lr=self.lr,
                               weight_decay=self.weight_decay)
         if self.optimizer_type == 'adagrad':
+            logger.info('Using ADAGRAD optimizer')
             return optim.Adagrad(self.model.parameters(), lr=self.lr,
                                  weight_decay=self.weight_decay)
         if self.optimizer_type == 'adamax':
+            logger.info('Using ADAMAX optimizer')
             return optim.Adamax(self.model.parameters(), lr=self.lr,
                                 weight_decay=self.weight_decay)
         if self.optimizer_type == 'adamw':
+            logger.info('Using ADAMW optimizer')
             return optim.AdamW(self.model.parameters(), lr=self.lr,
                                weight_decay=self.weight_decay)
 
     def _get_criterion(self):
         if self.criterion_type == 'cross_entropy':
+            logger.info('Using CROSS ENTROPY loss')
             return torch.nn.CrossEntropyLoss()
         if self.criterion_type == 'neg-loss':
+            logger.info('Using NEG LOSS loss')
             return torch.nn.NLLLoss
         if self.criterion_type == 'l1':
+            logger.info('Using L1 loss')
             return torch.nn.L1Loss()
         if self.criterion_type == 'l2':
+            logger.info('Using L2 loss')
             return torch.nn.MSELoss
         if self.criterion_type == 'custom':
+            logger.info('Using CUSTOM loss')
             return custom_loss_function
 
     def _average_gradients(self):
@@ -178,24 +192,37 @@ class Trainer():
             return torch.mean(torch.sqrt(colwise_mse), dim=0)
         if self.metric == 'accuracy':
             predictions = self._get_predictions(outputs)
-            return accuracy_score(targets.cpu().detach().numpy(), predictions.cpu().detach().numpy())
+            if isinstance(predictions, tuple) or isinstance(predictions, list):
+                return tuple(accuracy_score(target.cpu().detach().numpy(), prediction.cpu().detach().numpy())
+                             for target, prediction in zip(targets, predictions))
+            else:
+                return accuracy_score(targets.cpu().detach().numpy(), predictions.cpu().detach().numpy())
 
     def _get_predictions(self, outputs):
-        if self.pred_function_type:
-            return torch.argmax(self.pred_function(outputs), dim=-1)
+        if isinstance(outputs, tuple) or isinstance(outputs, list):
+            if self.pred_function_type:
+                return tuple(torch.argmax(self.pred_function(output), dim=-1) for output in outputs)
+            else:
+                return tuple(torch.argmax(output, dim=-1) for output in outputs)
         else:
-            return torch.argmax(outputs, dim=-1)
+            if self.pred_function_type:
+                return torch.argmax(self.pred_function(outputs), dim=-1)
+            else:
+                return torch.argmax(outputs, dim=-1)
 
     def _train_one_epoch(self, epoch):
         self.model.train()
         self.model = self.model.to(self.device)
         running_loss = 0.
-        running_metric = 0.
+        if self.n_metrics == 1:
+            running_metric = 0.
+        else:
+            running_metric = [.0] * self.n_metrics
         with tqdm(self.train_loader, unit='batch') as tepoch:
             for i, data in enumerate(tepoch):
                 self.optimizer.zero_grad()
                 outputs = self.model_forward(data)
-                targets = data['labels']['sel'].to(self.device)
+                targets = self.gather_targets(data)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 loss.backward()
@@ -203,9 +230,19 @@ class Trainer():
                 if self.scheduler_type == 'CosineAnnealingWarmRestarts':
                     self.scheduler.step(epoch - 1 + i / len(self.train_loader))  # as per pytorch docs
                 if self.metric:
-                    running_metric += self._evaluate(outputs, targets)
-                    tepoch.set_postfix(loss=running_loss / len(self.train_loader),
-                                       metric=running_metric / len(self.train_loader))
+                    if isinstance(outputs, tuple) or isinstance(outputs, list):
+                        if len(outputs) == self.n_metrics:
+                            evaluated_metrics = self._evaluate(outputs, targets)
+                            for idx, metric in enumerate(running_metric):
+                                metric += evaluated_metrics[idx]
+                                running_metric[idx] = metric
+                            exec(self._create_string())
+                        else:
+                            raise IndexError('Number of outputs and number of metrics not matching.')
+                    else:
+                        running_metric += self._evaluate(outputs, targets)
+                        tepoch.set_postfix(loss=running_loss / len(self.train_loader),
+                                           metric=running_metric / len(self.train_loader))
                 else:
                     tepoch.set_postfix(loss=loss.item())
                 del targets, outputs, loss
@@ -222,17 +259,30 @@ class Trainer():
         self.model.eval()
         self.model = self.model.to(self.device)
         running_loss = 0.
-        running_metric = 0.
+        if self.n_metrics == 1:
+            running_metric = 0.
+        else:
+            running_metric = [.0] * self.n_metrics
         with tqdm(self.val_loader, unit='batch') as tepoch:
             for data in tepoch:
                 outputs = self.model_forward(data)
-                targets = data['labels']['sel'].to(self.device)
+                targets = self.gather_targets(data)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
-                    running_metric += self._evaluate(outputs, targets)
-                    tepoch.set_postfix(loss=running_loss / len(self.val_loader),
-                                       metric=running_metric / len(self.val_loader))
+                    if isinstance(outputs, tuple) or isinstance(outputs, list):
+                        if len(outputs) == self.n_metrics:
+                            evaluated_metrics = self._evaluate(outputs, targets)
+                            for idx, metric in enumerate(running_metric):
+                                metric += evaluated_metrics[idx]
+                                running_metric[idx] = metric
+                            exec(self._create_string(set_type='val'))
+                        else:
+                            raise IndexError('Number of outputs and number of metrics not matching.')
+                    else:
+                        running_metric += self._evaluate(outputs, targets)
+                        tepoch.set_postfix(loss=running_loss / len(self.val_loader),
+                                           metric=running_metric / len(self.val_loader))
                 else:
                     tepoch.set_postfix(loss=loss.item())
                 del targets, outputs, loss
@@ -297,14 +347,24 @@ class Trainer():
         running_metric = 0.
         with tqdm(test_loader, unit='batch') as tepoch:
             for data in tepoch:
-                targets = data['labels']['sel'].to(self.device)
+                targets = self.gather_targets(data)
                 outputs = self.model_forward(data, model=model)
                 loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
-                    running_metric += self._evaluate(outputs, targets)
-                    tepoch.set_postfix(loss=running_loss / len(test_loader),
-                                       metric=running_metric / len(test_loader))
+                    if isinstance(outputs, tuple) or isinstance(outputs, list):
+                        if len(outputs) == self.n_metrics:
+                            evaluated_metrics = self._evaluate(outputs, targets)
+                            for idx, metric in enumerate(running_metric):
+                                metric += evaluated_metrics[idx]
+                                running_metric[idx] = metric
+                            exec(self._create_string(set_type='test'))
+                        else:
+                            raise IndexError('Number of outputs and number of metrics not matching.')
+                    else:
+                        running_metric += self._evaluate(outputs, targets)
+                        tepoch.set_postfix(loss=running_loss / len(test_loader),
+                                           metric=running_metric / len(test_loader))
                 else:
                     tepoch.set_postfix(loss=loss.item())
                 del targets, outputs, loss
@@ -333,3 +393,15 @@ class Trainer():
             outputs = self.model(inputs)
         del inputs
         return outputs
+
+    def gather_targets(self, data):
+        sel_labels = data['labels']['sel'].to(self.device)
+        agg_labels = data['labels']['agg'].to(self.device)
+        return sel_labels, agg_labels
+
+    def _create_string(self, set_type='train'):
+        string = f'tepoch.set_postfix(loss=running_loss / len(self.{set_type}_loader)'
+        for idx in range(self.n_metrics):
+            string += f', metric{idx+1}=running_metric[{idx}] / len(self.{set_type}_loader)'
+        string += ')'
+        return string

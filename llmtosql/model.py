@@ -1,22 +1,23 @@
 from transformers import AutoModel, AutoTokenizer
-import torch
-from torch import nn
-from torch.nn.parameter import Parameter
 import structlog
+from .utils.modules.base_model import WikiSQLBase
 from .utils.modules.select import WikiSQLSelect
 from .utils.modules.aggregation import WikiSQLSAgg
 
 logger = structlog.get_logger('__name__')
 
 
-class WikiSQLModel(nn.Module):
-    def __init__(self):
-        super().__init__()
+class WikiSQLModel(WikiSQLBase):
+    def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False, local_model_type=None):
+        super().__init__(base_model_type, N_lat=N_lat, attention_type=attention_type,
+                         col_drop=col_drop, local_model_type=local_model_type)
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_type)
         self.model = AutoModel.from_pretrained(self.base_model_type)
+        if not self.hidden_dim:
+            self.hidden_dim = self.model.config.hidden_size
         self.seq_length = self.model.config.max_position_embeddings
-        self.sel_layer = WikiSQLSelect()
-        self.agg_layer = WikiSQLSAgg()
+        self.sel_layer = WikiSQLSelect(self.model, self.hidden_dim, attention_type, col_drop)
+        self.agg_layer = WikiSQLSAgg(self.model, self.hidden_dim, attention_type)
 
     def forward(self, data):
         sel_out = self.sel_layer(data)

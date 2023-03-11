@@ -12,7 +12,7 @@ class WikiSQLBase(nn.Module):
         super().__init__()
         self.parameter = Parameter(torch.empty((1, 1)))
         self.base_model_type = base_model_type
-        self.N_lat = N_lat
+        self.hidden_dim = N_lat
         self.attention_type = attention_type
         self.col_drop = col_drop
         logger.info(f'Using {attention_type} attention mechanism')
@@ -35,8 +35,6 @@ class WikiSQLBase(nn.Module):
             else:
                 logger.error(f'Model type not valid - {base_model_type}')
                 raise TypeError(f'Model type not valid - {base_model_type}')
-        if not self.N_lat:
-            self.hidden_dim = self.model.config.hidden_size
         if self.attention_type == 'cross':
             pass
         elif self.attention_type == 'sqlnet':

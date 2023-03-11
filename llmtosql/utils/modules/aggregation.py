@@ -1,26 +1,26 @@
 import torch
 from torch import nn
-from .base_model import WikiSQLBase
 import structlog
 
 logger = structlog.get_logger('__name__')
 
 
-class WikiSQLSAgg(WikiSQLBase):
-    def __init__(self):
+class WikiSQLSAgg(nn.Module):
+    def __init__(self, model, hidden_dim, attention_type):
         super().__init__()
-        if not self.N_lat:
-            self.hidden_dim = self.model.config.hidden_size
+        self.model = model
+        self.hidden_dim = hidden_dim
+        self.attention_type = attention_type
         if self.attention_type == 'cross':
             self.cross_att = nn.MultiheadAttention(self.hidden_dim, 8, batch_first=True)
             self.batch_norm = nn.BatchNorm1d(self.hidden_dim)
             self.out = nn.Sequential(nn.Linear(self.hidden_dim, self.hidden_dim),
-                                         nn.Tanh(dim=-1), nn.Linear(self.hidden_dim, 6))
+                                         nn.Tanh(), nn.Linear(self.hidden_dim, 6))
         elif self.attention_type == 'sqlnet':
             # FROM SQLNET
             self.agg_att = nn.Linear(self.hidden_dim, 1)
             self.agg_out = nn.Sequential(nn.Linear(self.hidden_dim, self.hidden_dim),
-                                         nn.Tanh(dim=-1), nn.Linear(self.hidden_dim, 6))
+                                         nn.Tanh(), nn.Linear(self.hidden_dim, 6))
             self.softmax = nn.Softmax(dim=-1)
         else:
             logger.error(f'Was not able to load AGGREGATION module -  {type(self.attention_type)}  not valid')
