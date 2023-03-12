@@ -6,9 +6,8 @@ logger = structlog.get_logger('__name__')
 
 
 class WikiSQLSAgg(nn.Module):
-    def __init__(self, model, hidden_dim, attention_type):
+    def __init__(self, hidden_dim, attention_type):
         super().__init__()
-        self.model = model
         self.hidden_dim = hidden_dim
         self.attention_type = attention_type
         if self.attention_type == 'cross':
@@ -27,14 +26,7 @@ class WikiSQLSAgg(nn.Module):
             raise TypeError(f'Was not able to load AGGREGATION module -  {type(self.attention_type)}  not valid')
 
     def forward(self, data):
-        text_tokenized, columns_tokenized = data
-        with torch.no_grad():
-            text_outputs = self.model(**text_tokenized)
-            columns_outputs = self.model(**columns_tokenized)
-        text_last_hs = text_outputs.last_hidden_state
-        columns_last_hs = columns_outputs.last_hidden_state
-        text_last_hs = text_last_hs[:, 1:, :]
-        columns_last_hs = columns_last_hs[:, 1:, :]
+        text_last_hs, columns_last_hs = data
         if self.attention_type == 'cross':
             attn_output, _ = self.cross_att(columns_last_hs, text_last_hs, text_last_hs)
             cross_attention_add = torch.add(columns_last_hs, attn_output)

@@ -1,3 +1,4 @@
+import torch
 from transformers import AutoModel, AutoTokenizer
 import structlog
 from .utils.modules.base_model import WikiSQLBase
@@ -16,12 +17,21 @@ class WikiSQLModel(WikiSQLBase):
         if not self.hidden_dim:
             self.hidden_dim = self.model.config.hidden_size
         self.seq_length = self.model.config.max_position_embeddings
-        self.sel_layer = WikiSQLSelect(self.model, self.hidden_dim, attention_type, col_drop)
-        self.agg_layer = WikiSQLSAgg(self.model, self.hidden_dim, attention_type)
+        self.sel_layer = WikiSQLSelect(self.hidden_dim, attention_type, col_drop)
+        self.agg_layer = WikiSQLSAgg(self.hidden_dim, attention_type)
 
     def forward(self, data):
-        sel_out = self.sel_layer(data)
-        agg_out = self.agg_layer(data)
+        text_tokenized, columns_tokenized = data
+        with torch.no_grad():
+            text_outputs = self.model(**text_tokenized)
+            columns_outputs = self.model(**columns_tokenized)
+        text_last_hs = text_outputs.last_hidden_state
+        columns_last_hs = columns_outputs.last_hidden_state
+        text_last_hs = text_last_hs[:, 1:, :]
+        columns_last_hs = columns_last_hs[:, 1:, :]
+        layer_input = (text_last_hs, columns_last_hs)
+        sel_out = self.sel_layer(layer_input, columns_tokenized)
+        agg_out = self.agg_layer(layer_input)
         return sel_out, agg_out
 
     def tokenize(self, data):
