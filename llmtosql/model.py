@@ -32,7 +32,7 @@ class WikiSQLModel(WikiSQLBase):
         layer_input = (text_last_hs, columns_last_hs)
         sel_out = self.sel_layer(layer_input)
         if self.col_drop or self.attention_type == 'cross':
-            sel_out = self.compose_outputs(columns_outputs, sel_out)
+            sel_out = self.compose_outputs(columns_tokenized, sel_out)
         agg_out = self.agg_layer(layer_input)
         return sel_out, agg_out
 
