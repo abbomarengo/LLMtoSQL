@@ -31,7 +31,8 @@ class WikiSQLSAgg(nn.Module):
             attn_output, _ = self.cross_att(columns_last_hs, text_last_hs, text_last_hs)
             cross_attention_add = torch.add(columns_last_hs, attn_output)
             cross_attention_norm = self.batch_norm(torch.transpose(cross_attention_add, 1, 2))
-            ret = self.out(torch.transpose(cross_attention_norm, 1, 2))
+            cross_attention_norm_transpose = torch.transpose(cross_attention_norm, 1, 2)
+            ret = self.out(cross_attention_norm_transpose.mean(dim=1))
             return ret
         elif self.attention_type == 'sqlnet':
             # FROM SQLNET
