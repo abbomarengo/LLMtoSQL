@@ -293,9 +293,9 @@ class Trainer():
         self.val_losses.append(val_loss)
         if self.metric:
             if self.n_metrics == 1:
-                self.train_metrics.append(running_metric / len(self.val_loader))
+                self.val_metrics.append(running_metric / len(self.val_loader))
             else:
-                self.train_metrics.append([metric / len(self.val_loader) for metric in running_metric])
+                self.val_metrics.append([metric / len(self.val_loader) for metric in running_metric])
         del running_metric
 
     def save_model(self, model_dir):
