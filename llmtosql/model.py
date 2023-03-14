@@ -17,7 +17,7 @@ class WikiSQLModel(WikiSQLBase):
         if not self.hidden_dim:
             self.hidden_dim = self.model.config.hidden_size
         self.seq_length = self.model.config.max_position_embeddings
-        self.sel_layer = WikiSQLSelect(self.hidden_dim, attention_type, col_drop)
+        self.sel_layer = WikiSQLSelect(self.hidden_dim, attention_type)
         self.agg_layer = WikiSQLSAgg(self.hidden_dim, attention_type)
 
     def forward(self, data):
@@ -30,7 +30,9 @@ class WikiSQLModel(WikiSQLBase):
         text_last_hs = text_last_hs[:, 1:, :]
         columns_last_hs = columns_last_hs[:, 1:, :]
         layer_input = (text_last_hs, columns_last_hs)
-        sel_out = self.sel_layer(layer_input, columns_tokenized)
+        sel_out = self.sel_layer(layer_input)
+        if self.col_drop or self.attention_type == 'cross':
+            sel_out = self.compose_outputs(columns_outputs, sel_out)
         agg_out = self.agg_layer(layer_input)
         return sel_out, agg_out
 
