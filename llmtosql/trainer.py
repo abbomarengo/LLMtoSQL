@@ -251,7 +251,10 @@ class Trainer():
         train_loss = running_loss / len(self.train_loader)
         self.train_losses.append(train_loss)
         if self.metric:
-            self.train_metrics.append(running_metric / len(self.train_loader))
+            if self.n_metrics == 1:
+                self.train_metrics.append(running_metric / len(self.train_loader))
+            else:
+                self.train_metrics.append([metric / len(self.train_loader) for metric in running_metric])
         del running_metric
 
     @torch.no_grad()
@@ -289,7 +292,10 @@ class Trainer():
         val_loss = running_loss / len(self.val_loader)
         self.val_losses.append(val_loss)
         if self.metric:
-            self.val_metrics.append(running_metric / len(self.val_loader))
+            if self.n_metrics == 1:
+                self.train_metrics.append(running_metric / len(self.val_loader))
+            else:
+                self.train_metrics.append([metric / len(self.val_loader) for metric in running_metric])
         del running_metric
 
     def save_model(self, model_dir):
@@ -370,7 +376,10 @@ class Trainer():
                 del targets, outputs, loss
         test_loss = running_loss / len(test_loader)
         if self.metric:
-            test_metric = running_metric / len(test_loader)
+            if self.n_metrics == 1:
+                test_metric = running_metric / len(test_loader)
+            else:
+                test_metric = [metric / len(test_loader) for metric in running_metric]
             return test_loss, test_metric
         return test_loss
 
