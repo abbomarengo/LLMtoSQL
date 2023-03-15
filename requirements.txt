@@ -7,3 +7,4 @@ awscli
 boto3
 sagemaker
 transformers
+plotly
