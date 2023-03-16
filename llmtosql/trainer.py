@@ -348,9 +348,13 @@ class Trainer():
 
     def test(self, model, test_loader):
         logger.info("Testing..")
+        self.test_loader = test_loader
         model = model.to(self.device)
         running_loss = 0.
-        running_metric = 0.
+        if self.n_metrics == 1:
+            running_metric = 0.
+        else:
+            running_metric = [.0] * self.n_metrics
         with tqdm(test_loader, unit='batch') as tepoch:
             for data in tepoch:
                 targets = self.gather_targets(data)
@@ -411,6 +415,6 @@ class Trainer():
     def _create_string(self, set_type='train'):
         string = f'tepoch.set_postfix(loss=running_loss / len(self.{set_type}_loader)'
         for idx in range(self.n_metrics):
-            string += f', metric{idx+1}=running_metric[{idx}] / len(self.{set_type}_loader)'
+            string += f', metric{idx + 1}=running_metric[{idx}] / len(self.{set_type}_loader)'
         string += ')'
         return string
