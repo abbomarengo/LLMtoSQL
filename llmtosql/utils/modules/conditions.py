@@ -48,12 +48,15 @@ class WikiSQLConditions(nn.Module):
         else:
             device = 'mps:' + str(device_n) if device_n != -1 else 'cpu'
         mask_id = self.tokenizer.convert_tokens_to_ids('[MASK]')
-        dec_inp = torch.ones([dim_0, dim_1, dim_2], dtype=torch.float32, device=device)*mask_id
+        dec_inp = torch.ones([dim_0, dim_1], dtype=torch.float32, device=device)*mask_id
         query = self.q(dec_inp.unsqueeze(dim=-1))
         attn_output, _ = self.cross_att(query, text_last_hs, text_last_hs)
         cross_attention_add = torch.add(query, attn_output)
-        cross_attention_norm = self.batch_norm(torch.transpose(cross_attention_add, 1, 3))
-        feed_forward = self.ff(torch.transpose(cross_attention_norm, 1, 3)).squeeze()
+        cross_attention_norm = self.batch_norm(torch.transpose(cross_attention_add, 1, 2))
+        cross_transpose = torch.transpose(cross_attention_norm, 1, 2)
+        concat = torch.cat([cross_transpose]*dim_2, dim=-1)
+        reshaped_in = concat.view(dim_0, dim_1, dim_2, self.hidden_dim)
+        feed_forward = self.ff(reshaped_in)
         cond_text_out = self.out(feed_forward)
 
         return cond_text_out
