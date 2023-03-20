@@ -3,7 +3,7 @@ from torch import nn
 from torch.nn import Softmax
 import structlog
 
-from .select import WikiSQLSelect
+from .base_module import WikiSQLBaseModule
 from .aggregation import WikiSQLSAgg
 
 logger = structlog.get_logger('__name__')
@@ -22,7 +22,7 @@ class WikiSQLConditions(nn.Module):
             # Step 1 - condition number
             self.cond_num_layer = WikiSQLSAgg(self.hidden_dim, 10, attention_type)
             # Step 4 - Condition text
-            self.cond_text_layer = WikiSQLSAgg(self.hidden_dim, self.hidden_dim, attention_type)
+            self.cond_text_layer = WikiSQLBaseModule(self.hidden_dim, self.hidden_dim, attention_type)
             self.ff = nn.Sequential(nn.Linear(self.hidden_dim, self.hidden_dim),
                                     nn.Tanh(), nn.Linear(self.hidden_dim, self.hidden_dim))
             self.text_out = nn.Linear(self.hidden_dim, self.vocab_size)
@@ -34,13 +34,12 @@ class WikiSQLConditions(nn.Module):
             raise TypeError(f'Was not able to load SELECT module -  {type(self.attention_type)}  not valid')
 
     def forward(self, data):
-        text_last_hs, columns_last_hs = data
         # Step 1 - condition number
         cond_num_out = self.cond_num_layer(data)
         num_conditions = torch.argmax(self.pred_function(cond_num_out), dim=-1)
 
         # Step 4 - Condition text
-        dim_0 = text_last_hs.shape[0]
+        dim_0 = data[0].shape[0]
         dim_1 = self.seq_len
         dim_2 = num_conditions
         cross_attention_norm = self.cond_text_layer(data)
@@ -50,5 +49,5 @@ class WikiSQLConditions(nn.Module):
         feed_forward = self.ff(reshaped_in)
         cond_text_out = self.text_out(feed_forward)
 
-        return cond_text_out
+        return cond_num_out, cond_text_out
 
