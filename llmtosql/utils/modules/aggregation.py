@@ -6,20 +6,21 @@ logger = structlog.get_logger('__name__')
 
 
 class WikiSQLSAgg(nn.Module):
-    def __init__(self, hidden_dim, attention_type):
+    def __init__(self, hidden_dim, dim_out, attention_type):
         super().__init__()
         self.hidden_dim = hidden_dim
+        self.dim_out = dim_out
         self.attention_type = attention_type
         if self.attention_type == 'cross':
             self.cross_att = nn.MultiheadAttention(self.hidden_dim, 8, batch_first=True)
             self.batch_norm = nn.BatchNorm1d(self.hidden_dim)
             self.out = nn.Sequential(nn.Linear(self.hidden_dim, self.hidden_dim),
-                                         nn.Tanh(), nn.Linear(self.hidden_dim, 6))
+                                         nn.Tanh(), nn.Linear(self.hidden_dim, self.dim_out))
         elif self.attention_type == 'sqlnet':
             # FROM SQLNET
             self.agg_att = nn.Linear(self.hidden_dim, 1)
             self.agg_out = nn.Sequential(nn.Linear(self.hidden_dim, self.hidden_dim),
-                                         nn.Tanh(), nn.Linear(self.hidden_dim, 6))
+                                         nn.Tanh(), nn.Linear(self.hidden_dim, self.dim_out))
             self.softmax = nn.Softmax(dim=-1)
         else:
             logger.error(f'Was not able to load AGGREGATION module -  {type(self.attention_type)}  not valid')

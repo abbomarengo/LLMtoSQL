@@ -18,7 +18,7 @@ class WikiSQLModel(WikiSQLBase):
             self.hidden_dim = self.model.config.hidden_size
         self.seq_length = self.model.config.max_position_embeddings
         self.sel_layer = WikiSQLSelect(self.hidden_dim, attention_type)
-        self.agg_layer = WikiSQLSAgg(self.hidden_dim, attention_type)
+        self.agg_layer = WikiSQLSAgg(self.hidden_dim, 6, attention_type)
 
     def forward(self, data):
         text_tokenized, columns_tokenized = data
