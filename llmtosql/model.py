@@ -13,6 +13,7 @@ class WikiSQLModel(WikiSQLBase):
     def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False, local_model_type=None):
         super().__init__(base_model_type, N_lat=N_lat, attention_type=attention_type,
                          col_drop=col_drop, local_model_type=local_model_type)
+        self.n_heads = 3
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_type)
         self.model = AutoModel.from_pretrained(self.base_model_type)
         self.criterion = torch.nn.CrossEntropyLoss()
