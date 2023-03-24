@@ -4,6 +4,7 @@ import structlog
 from .utils.modules.base_model import WikiSQLBase
 from .utils.modules.select import WikiSQLSelect
 from .utils.modules.aggregation import WikiSQLSAgg
+from .utils.modules.conditions import WikiSQLConditions
 
 logger = structlog.get_logger('__name__')
 
@@ -14,11 +15,15 @@ class WikiSQLModel(WikiSQLBase):
                          col_drop=col_drop, local_model_type=local_model_type)
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_type)
         self.model = AutoModel.from_pretrained(self.base_model_type)
+        self.criterion = torch.nn.CrossEntropyLoss()
         if not self.hidden_dim:
             self.hidden_dim = self.model.config.hidden_size
-        self.seq_length = self.model.config.max_position_embeddings
+        self.seq_len = self.model.config.max_position_embeddings
+        self.vocab_size = self.model.config.vocab_size
         self.sel_layer = WikiSQLSelect(self.hidden_dim, attention_type)
         self.agg_layer = WikiSQLSAgg(self.hidden_dim, 6, attention_type)
+        self.cond_layer = WikiSQLConditions(self.tokenizer, self.hidden_dim, self.seq_len,
+                                            self.vocab_size, attention_type)
 
     def forward(self, data):
         text_tokenized, columns_tokenized = data
@@ -34,7 +39,12 @@ class WikiSQLModel(WikiSQLBase):
         if self.col_drop or self.attention_type == 'cross':
             sel_out = self.compose_outputs(columns_tokenized, sel_out)
         agg_out = self.agg_layer(layer_input)
-        return sel_out, agg_out
+        cond_out = self.cond_layer(layer_input)
+        if self.col_drop or self.attention_type == 'cross':
+            cond_num_out, cond_column_out, cond_op_out, cond_text_out = cond_out
+            cond_column_out = self.compose_outputs(columns_tokenized, cond_column_out, multi=True)
+            cond_out = (cond_num_out, cond_column_out, cond_op_out, cond_text_out)
+        return sel_out, agg_out, cond_out
 
     def tokenize(self, data):
         text_imp, columns_imp = data
@@ -51,3 +61,8 @@ class WikiSQLModel(WikiSQLBase):
         text_tokenized = self.tokenizer(text_imp, padding='max_length', return_tensors='pt')
         columns_tokenized = self.tokenizer(columns_imp, padding='max_length', return_tensors='pt')
         return text_tokenized, columns_tokenized
+
+    def loss(self, outputs, targets):
+        losses = [self.criterion(output, target) for output, target in zip(outputs, targets)]
+        loss = torch.stack(losses, dim=0).sum(dim=0)
+        return loss

@@ -12,10 +12,6 @@ import pickle
 # SageMaker data parallel: Import PyTorch's distributed API
 import torch.distributed as dist
 
-# Local import
-
-from .utils.functions import custom_loss_function
-
 logger = structlog.get_logger('__name__')
 
 
@@ -176,7 +172,7 @@ class Trainer():
             return torch.nn.MSELoss
         if self.criterion_type == 'custom':
             logger.info('Using CUSTOM loss')
-            return custom_loss_function
+            return None
 
     def _average_gradients(self):
         # Average gradients (only for multi-node CPU)
@@ -223,7 +219,10 @@ class Trainer():
                 self.optimizer.zero_grad()
                 outputs = self.model_forward(data)
                 targets = self.gather_targets(data)
-                loss = self.criterion(outputs, targets)
+                if self.criterion is None:
+                    loss = self.model.loss(outputs, targets)
+                else:
+                    loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 loss.backward()
                 self.optimizer.step()
@@ -270,7 +269,10 @@ class Trainer():
             for data in tepoch:
                 outputs = self.model_forward(data)
                 targets = self.gather_targets(data)
-                loss = self.criterion(outputs, targets)
+                if self.criterion is None:
+                    loss = self.model.loss(outputs, targets)
+                else:
+                    loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
                     if isinstance(outputs, tuple) or isinstance(outputs, list):
@@ -359,7 +361,10 @@ class Trainer():
             for data in tepoch:
                 targets = self.gather_targets(data)
                 outputs = self.model_forward(data, model=model)
-                loss = self.criterion(outputs, targets)
+                if self.criterion is None:
+                    loss = self.model.loss(outputs, targets)
+                else:
+                    loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
                     if isinstance(outputs, tuple) or isinstance(outputs, list):

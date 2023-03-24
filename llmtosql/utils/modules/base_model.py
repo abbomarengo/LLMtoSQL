@@ -47,7 +47,7 @@ class WikiSQLBase(nn.Module):
     def forward(self, data):
         pass
 
-    def compose_outputs(self, col_vector, final_vector):
+    def compose_outputs(self, col_vector, final_vector, multi=False):
         comma = self.tokenizer.convert_tokens_to_ids(',')
         comma_idx = (col_vector['input_ids'] == comma).nonzero(as_tuple=True)
         comma_idx = (
@@ -56,12 +56,17 @@ class WikiSQLBase(nn.Module):
         )
         dim_1 = torch.max(torch.unique(comma_idx[0], return_counts=True)[1]).item() + 1
         dim_0 = len(col_vector['input_ids'])
+        if multi:
+            dim_2 = final_vector.shape[2]
         device_n = self.parameter.get_device()
         if self.parameter.is_cuda:
             device = 'cuda:' + str(device_n) if device_n != -1 else 'cpu'
         else:
             device = 'mps:' + str(device_n) if device_n != -1 else 'cpu'
-        out = torch.zeros([dim_0, dim_1], dtype=torch.float32, device=device)
+        if not multi:
+            out = torch.zeros([dim_0, dim_1], dtype=torch.float32, device=device)
+        else:
+            out = torch.zeros([dim_0, dim_1, dim_2], dtype=torch.float32, device=device)
         slice_start = 0
         current_idx = 0
         y = 0
@@ -69,14 +74,26 @@ class WikiSQLBase(nn.Module):
             slice_end = comma_idx[1][idx].item()
             x = comma_idx[0][idx].item()
             if x != current_idx:
-                out[x-1][y] = final_vector[x-1][slice_start:].mean()
+                if not multi:
+                    out[x-1][y] = final_vector[x-1][slice_start:].mean()
+                else:
+                    for z in range(dim_2):
+                        out[x - 1][y][z] = final_vector[x - 1][slice_start:][z].mean()
                 y = 0
                 slice_start = 0
                 current_idx = x
-            out[x][y] = final_vector[x][slice_start:slice_end].mean()
+            if not multi:
+                out[x][y] = final_vector[x][slice_start:slice_end].mean()
+            else:
+                for z in range(dim_2):
+                    out[x][y][z] = final_vector[x][slice_start:slice_end][z].mean()
             slice_start = slice_end + 1
             y += 1
-        out[x][y] = final_vector[x][slice_start:].mean()
+        if not multi:
+            out[x][y] = final_vector[x][slice_start:].mean()
+        else:
+            for z in range(dim_2):
+                out[x][y][z] = final_vector[x][slice_start:][z].mean()
         return out
 
     def reduce_col_name(self, columns):

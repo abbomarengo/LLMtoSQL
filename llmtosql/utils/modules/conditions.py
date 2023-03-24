@@ -58,7 +58,7 @@ class WikiSQLConditions(nn.Module):
         reshaped_in_c = concat_c.view(dim_0, dim_1, dim_2, self.hidden_dim)
         feed_forward_c = self.ff2(reshaped_in_c)
         last_layer_c = self.column_out(feed_forward_c)
-        cond_column_out = self.compose_outputs_multi(last_layer_c.squeeze())
+        cond_column_out = last_layer_c.squeeze()
         # Step 3 - condition operation
         cond_op = self.cond_op(data)
         cross_transpose_o = torch.transpose(cond_op, 1, 2)
@@ -75,6 +75,3 @@ class WikiSQLConditions(nn.Module):
         cond_text_out = self.text_out(feed_forward_t)
 
         return cond_num_out, cond_column_out, cond_op_out, cond_text_out
-
-    def compose_outputs_multi(self, logits):
-        return logits
