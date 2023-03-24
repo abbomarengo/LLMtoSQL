@@ -16,13 +16,12 @@ logger = structlog.get_logger('__name__')
 
 
 class Trainer():
-    def __init__(self, model, datasets=None, epochs=None, batch_size=None, n_metrics=1,
+    def __init__(self, model, datasets=None, epochs=None, batch_size=None,
                  is_parallel=False, save_history=False, **config):
         logger.info('Config inputs.', config=config)
         allowed_kwargs = {"seed", "scheduler", "optimizer", "momentum", "weight_decay",
                           "lr", "criterion", "metric", "pred_function", "model_dir", "backend"}
         self.validate = True
-        self.n_metrics = n_metrics
         self.validate_kwargs(config, allowed_kwargs)
         # Unpack kwargs
         self.epochs = epochs
@@ -126,6 +125,10 @@ class Trainer():
         if self.scheduler_type:
             self.scheduler = self.scheduler_options[self.scheduler_type]
         self.pred_function = self._get_prediction_function()
+        try:
+            self.n_heads = self.model.n_heads
+        except:
+            self.n_heads = 1
 
     def _get_prediction_function(self):
         if self.pred_function_type == 'logsoftmax':
@@ -210,15 +213,20 @@ class Trainer():
         self.model.train()
         self.model = self.model.to(self.device)
         running_loss = 0.
-        if self.n_metrics == 1:
+        if self.n_heads == 1:
             running_metric = 0.
         else:
-            running_metric = [.0] * self.n_metrics
+            running_metric = [.0] * self.n_heads
         with tqdm(self.train_loader, unit='batch') as tepoch:
             for i, data in enumerate(tepoch):
                 self.optimizer.zero_grad()
-                outputs = self.model_forward(data)
-                targets = self.gather_targets(data)
+                if self.n_heads == 1:
+                    inputs, targets = data
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                else:
+                    inputs, targets = self.model.unpack(data, self.device)
+                outputs = self.model(inputs)
                 if self.criterion is None:
                     loss = self.model.loss(outputs, targets)
                 else:
@@ -230,7 +238,7 @@ class Trainer():
                     self.scheduler.step(epoch - 1 + i / len(self.train_loader))  # as per pytorch docs
                 if self.metric:
                     if isinstance(outputs, tuple) or isinstance(outputs, list):
-                        if len(outputs) == self.n_metrics:
+                        if len(outputs) == self.n_heads:
                             evaluated_metrics = self._evaluate(outputs, targets)
                             for idx, metric in enumerate(running_metric):
                                 metric += evaluated_metrics[idx]
@@ -244,13 +252,13 @@ class Trainer():
                                            metric=running_metric / len(self.train_loader))
                 else:
                     tepoch.set_postfix(loss=loss.item())
-                del targets, outputs, loss
+                del inputs, targets, outputs, loss
         if self.scheduler_type == 'StepLR':
             self.scheduler.step()
         train_loss = running_loss / len(self.train_loader)
         self.train_losses.append(train_loss)
         if self.metric:
-            if self.n_metrics == 1:
+            if self.n_heads == 1:
                 self.train_metrics.append(running_metric / len(self.train_loader))
             else:
                 self.train_metrics.append([metric / len(self.train_loader) for metric in running_metric])
@@ -261,14 +269,19 @@ class Trainer():
         self.model.eval()
         self.model = self.model.to(self.device)
         running_loss = 0.
-        if self.n_metrics == 1:
+        if self.n_heads == 1:
             running_metric = 0.
         else:
-            running_metric = [.0] * self.n_metrics
+            running_metric = [.0] * self.n_heads
         with tqdm(self.val_loader, unit='batch') as tepoch:
             for data in tepoch:
-                outputs = self.model_forward(data)
-                targets = self.gather_targets(data)
+                if self.n_heads == 1:
+                    inputs, targets = data
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                else:
+                    inputs, targets = self.model.unpack(data, self.device)
+                outputs = self.model(inputs)
                 if self.criterion is None:
                     loss = self.model.loss(outputs, targets)
                 else:
@@ -276,7 +289,7 @@ class Trainer():
                 running_loss += loss.item()
                 if self.metric:
                     if isinstance(outputs, tuple) or isinstance(outputs, list):
-                        if len(outputs) == self.n_metrics:
+                        if len(outputs) == self.n_heads:
                             evaluated_metrics = self._evaluate(outputs, targets)
                             for idx, metric in enumerate(running_metric):
                                 metric += evaluated_metrics[idx]
@@ -290,11 +303,11 @@ class Trainer():
                                            metric=running_metric / len(self.val_loader))
                 else:
                     tepoch.set_postfix(loss=loss.item())
-                del targets, outputs, loss
+                del inputs, targets, outputs, loss
         val_loss = running_loss / len(self.val_loader)
         self.val_losses.append(val_loss)
         if self.metric:
-            if self.n_metrics == 1:
+            if self.n_heads == 1:
                 self.val_metrics.append(running_metric / len(self.val_loader))
             else:
                 self.val_metrics.append([metric / len(self.val_loader) for metric in running_metric])
@@ -353,14 +366,19 @@ class Trainer():
         self.test_loader = test_loader
         model = model.to(self.device)
         running_loss = 0.
-        if self.n_metrics == 1:
+        if self.n_heads == 1:
             running_metric = 0.
         else:
-            running_metric = [.0] * self.n_metrics
+            running_metric = [.0] * self.n_heads
         with tqdm(test_loader, unit='batch') as tepoch:
             for data in tepoch:
-                targets = self.gather_targets(data)
-                outputs = self.model_forward(data, model=model)
+                if self.n_heads == 1:
+                    inputs, targets = data
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                else:
+                    inputs, targets = self.model.unpack(data, self.device)
+                outputs = self.model(inputs)
                 if self.criterion is None:
                     loss = self.model.loss(outputs, targets)
                 else:
@@ -368,7 +386,7 @@ class Trainer():
                 running_loss += loss.item()
                 if self.metric:
                     if isinstance(outputs, tuple) or isinstance(outputs, list):
-                        if len(outputs) == self.n_metrics:
+                        if len(outputs) == self.n_heads:
                             evaluated_metrics = self._evaluate(outputs, targets)
                             for idx, metric in enumerate(running_metric):
                                 metric += evaluated_metrics[idx]
@@ -382,10 +400,10 @@ class Trainer():
                                            metric=running_metric / len(test_loader))
                 else:
                     tepoch.set_postfix(loss=loss.item())
-                del targets, outputs, loss
+                del inputs, targets, outputs, loss
         test_loss = running_loss / len(test_loader)
         if self.metric:
-            if self.n_metrics == 1:
+            if self.n_heads == 1:
                 test_metric = running_metric / len(test_loader)
             else:
                 test_metric = [metric / len(test_loader) for metric in running_metric]
@@ -402,24 +420,9 @@ class Trainer():
             if kwarg not in allowed_kwargs:
                 raise TypeError(error_message, kwarg)
 
-    def model_forward(self, data, model=None):
-        inputs = (data['tokenized_inputs']['question'].to(self.device),
-                  data['tokenized_inputs']['columns'].to(self.device))
-        if model:
-            outputs = model(inputs)
-        else:
-            outputs = self.model(inputs)
-        del inputs
-        return outputs
-
-    def gather_targets(self, data):
-        sel_labels = data['labels']['sel'].to(self.device)
-        agg_labels = data['labels']['agg'].to(self.device)
-        return sel_labels, agg_labels
-
     def _create_string(self, set_type='train'):
         string = f'tepoch.set_postfix(loss=running_loss / len(self.{set_type}_loader)'
-        for idx in range(self.n_metrics):
+        for idx in range(self.n_heads):
             string += f', metric{idx + 1}=running_metric[{idx}] / len(self.{set_type}_loader)'
         string += ')'
         return string

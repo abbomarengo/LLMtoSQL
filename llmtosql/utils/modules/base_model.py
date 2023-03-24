@@ -47,6 +47,15 @@ class WikiSQLBase(nn.Module):
     def forward(self, data):
         pass
 
+    def unpack(self, data, device):
+        inputs = (data['tokenized_inputs']['question'].to(device),
+                  data['tokenized_inputs']['columns'].to(device))
+
+        sel_labels = data['labels']['sel'].to(self.device)
+        agg_labels = data['labels']['agg'].to(self.device)
+
+        return inputs, (sel_labels, agg_labels)
+
     def compose_outputs(self, col_vector, final_vector, multi=False):
         comma = self.tokenizer.convert_tokens_to_ids(',')
         comma_idx = (col_vector['input_ids'] == comma).nonzero(as_tuple=True)
