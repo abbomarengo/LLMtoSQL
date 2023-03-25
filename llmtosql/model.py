@@ -10,7 +10,8 @@ logger = structlog.get_logger('__name__')
 
 
 class WikiSQLModel(WikiSQLBase):
-    def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False, local_model_type=None):
+    def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False,
+                 local_model_type=None, max_conds=10):
         super().__init__(base_model_type, N_lat=N_lat, attention_type=attention_type,
                          col_drop=col_drop, local_model_type=local_model_type)
         self.n_heads = 3
@@ -24,7 +25,7 @@ class WikiSQLModel(WikiSQLBase):
         self.sel_layer = WikiSQLSelect(self.hidden_dim, attention_type)
         self.agg_layer = WikiSQLSAgg(self.hidden_dim, 6, attention_type)
         self.cond_layer = WikiSQLConditions(self.tokenizer, self.hidden_dim, self.seq_len,
-                                            self.vocab_size, attention_type)
+                                            self.vocab_size, attention_type, max_conds)
 
     def forward(self, data):
         text_tokenized, columns_tokenized = data

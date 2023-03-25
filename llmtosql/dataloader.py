@@ -1,6 +1,5 @@
 from torch.utils.data import Dataset
 from transformers import BatchEncoding
-import numpy as np
 import os
 import structlog
 from tqdm import tqdm
@@ -36,11 +35,18 @@ class WikiSQLDataset(Dataset):
         input = self.data[item]['question']
         sel = self.data[item]['sql']['sel']
         agg = self.data[item]['sql']['agg']
-        conds = [{'cond_1': int(cond[0]), 'cond_2': int(cond[1]), 'cond_3': str(cond[2])}
-                 for cond in self.data[item]['sql']['conds']]
-        if len(conds) != self.maxcondsLength:
-            list_extension = [{'cond_1': np.NaN, 'cond_2': np.NaN, 'cond_3': ''}]*(self.maxcondsLength-len(conds))
-            conds.extend(list_extension)
+        cond_1 = [int(cond[0]) for cond in self.data[item]['sql']['conds']]
+        cond_2 = [int(cond[1]) for cond in self.data[item]['sql']['conds']]
+        cond_3 = [str(cond[2]) for cond in self.data[item]['sql']['conds']]
+        if len(cond_1) != self.maxcondsLength:
+            list_extension = [-100]*(self.maxcondsLength-len(cond_1))
+            cond_1.extend(list_extension)
+        if len(cond_2) != self.maxcondsLength:
+            list_extension = [-100]*(self.maxcondsLength-len(cond_2))
+            cond_2.extend(list_extension)
+        if len(cond_3) != self.maxcondsLength:
+            list_extension = ['']*(self.maxcondsLength-len(cond_3))
+        cond_3.extend(list_extension)
         if self.model:
             columns = self.data[item]['columns']
             tokenized_inputs = self.data[item]['tokenized_inputs']
@@ -48,7 +54,6 @@ class WikiSQLDataset(Dataset):
                 'table_id': str(table),
                 'columns': columns,
                 'input': (str(input), str(columns)),
-                # 'tokenized_inputs': tokenized_inputs,
                 'tokenized_inputs': {
                     'question': BatchEncoding({k: v.squeeze() for k,v in tokenized_inputs[0].items()}),
                     'columns': BatchEncoding({k: v.squeeze() for k,v in tokenized_inputs[1].items()})
@@ -56,7 +61,7 @@ class WikiSQLDataset(Dataset):
                 'labels': {
                     'sel': int(sel),
                     'agg': int(agg),
-                    'conds': conds
+                    'conds': (cond_1, cond_2, cond_3)
                 }
             }
         else:
@@ -67,7 +72,6 @@ class WikiSQLDataset(Dataset):
                 'labels': {
                     'sel': int(sel),
                     'agg': int(agg),
-                    'conds': conds
+                    'conds': (cond_1, cond_2, cond_3)
                 }
             }
-
