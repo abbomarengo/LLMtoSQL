@@ -50,7 +50,9 @@ class WikiSQLConditions(nn.Module):
         # Prep for next steps
         dim_0 = data[0].shape[0]
         dim_1 = self.seq_len
-        dim_2 = num_conditions
+        dim_2 = torch.max(num_conditions).item()
+        if dim_2 == 0:
+            return cond_num_out
         # Step 2 - condition columns
         cond_column = self.cond_column(data)
         cross_transpose_c = torch.transpose(cond_column, 1, 2)
@@ -73,5 +75,4 @@ class WikiSQLConditions(nn.Module):
         reshaped_in_t = concat_t.view(dim_0, dim_1, dim_2, self.hidden_dim)
         feed_forward_t = self.ff4(reshaped_in_t)
         cond_text_out = self.text_out(feed_forward_t)
-
         return cond_num_out, cond_column_out, cond_op_out, cond_text_out

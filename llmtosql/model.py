@@ -68,3 +68,5 @@ class WikiSQLModel(WikiSQLBase):
         losses = [self.criterion(output, target) for output, target in zip(outputs, targets)]
         loss = torch.stack(losses, dim=0).sum(dim=0)
         return loss
+
+    # loss(torch.transpose(logits, 1, 2), label['input_ids'])
