@@ -1,4 +1,6 @@
 import torch
+import numpy as np
+from sklearn.metrics import accuracy_score
 from transformers import AutoModel, AutoTokenizer
 import structlog
 from .utils.modules.base_model import WikiSQLBase
@@ -11,7 +13,7 @@ logger = structlog.get_logger('__name__')
 
 class WikiSQLModel(WikiSQLBase):
     def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False,
-                 local_model_type=None, max_conds=10):
+                 local_model_type=None, max_conds=4):
         super().__init__(base_model_type, N_lat=N_lat, attention_type=attention_type,
                          col_drop=col_drop, local_model_type=local_model_type)
         self.n_heads = 3
@@ -26,6 +28,10 @@ class WikiSQLModel(WikiSQLBase):
         self.agg_layer = WikiSQLSAgg(self.hidden_dim, 6, attention_type)
         self.cond_layer = WikiSQLConditions(self.tokenizer, self.hidden_dim, self.seq_len,
                                             self.vocab_size, attention_type, max_conds)
+        self.soft1 = torch.nn.Softmax(dim=-1)
+        self.soft2 = torch.nn.Softmax(dim=1)
+        self.logsoft1 = torch.nn.LogSoftmax(dim=-1)
+        self.logsoft2 = torch.nn.LogSoftmax(dim=1)
 
     def forward(self, data):
         text_tokenized, columns_tokenized = data
@@ -64,9 +70,73 @@ class WikiSQLModel(WikiSQLBase):
         columns_tokenized = self.tokenizer(columns_imp, padding='max_length', return_tensors='pt')
         return text_tokenized, columns_tokenized
 
+    def predict(self, logits, function_type='softmax'):
+        ret = []
+        for output in logits:
+            if isinstance(output, torch.Tensor):
+                if function_type == 'softmax':
+                    ret.append(torch.argmax(self.soft1(output), dim=-1))
+                else:
+                    ret.append(torch.argmax(self.logsoft1(output), dim=-1))
+            else:
+                cond_ret = []
+                for idx, cond_out in enumerate(output):
+                    if idx == 0 or idx == 3:
+                        if function_type == 'softmax':
+                            cond_ret.append(torch.argmax(self.soft1(output), dim=-1))
+                        else:
+                            cond_ret.append(torch.argmax(self.logsoft1(output), dim=-1))
+                    else:
+                        if function_type == 'softmax':
+                            cond_ret.append(torch.argmax(self.soft2(output), dim=1))
+                        else:
+                            cond_ret.append(torch.argmax(self.logsoft2(output), dim=1))
+                ret.append(tuple(cond_ret))
+        return tuple(ret)
+
     def loss(self, outputs, targets):
-        losses = [self.criterion(output, target) for output, target in zip(outputs, targets)]
-        loss = torch.stack(losses, dim=0).sum(dim=0)
+        loss = .0
+        for output, target in zip(outputs, targets):
+            if isinstance(output, torch.Tensor):
+                loss += self.criterion(output, target).item()
+            else:
+                for idx, (cond_out, cond_lab) in enumerate(zip(output, target)):
+                    if idx == 0:
+                        loss += self.criterion(cond_out, cond_lab).item()
+                    if idx == 1 or idx == 2:
+                        loss += self.criterion(cond_out, torch.transpose(torch.stack(cond_lab), 0, 1)).item()
+                    else:
+                        for idx, cond_lab_text in enumerate(cond_lab):
+                            loss += self.criterion(torch.transpose(cond_out[:, :, idx, :], 1, 2),
+                                                   cond_lab_text['input_ids']).item()
+        # losses = [self.criterion(output, target) for output, target in zip(outputs, targets)]
+        # loss = torch.stack(losses, dim=0).sum(dim=0)
         return loss
 
-    # loss(torch.transpose(logits, 1, 2), label['input_ids'])
+    def accuracy_scores(self, predictions, targets):
+        accuracy = []
+        for prediction, target in zip(predictions, targets):
+            if isinstance(prediction, torch.Tensor):
+                accuracy.append(
+                    accuracy_score(target.cpu().detach().numpy(), prediction.cpu().detach().numpy())
+                )
+            else:
+                acc_cond = []
+                for idx, (cond_pred, cond_target) in enumerate(zip(prediction, target)):
+                    if idx == 0:
+                        acc_cond.append(
+                            accuracy_score(cond_target.cpu().detach().numpy(), cond_pred.cpu().detach().numpy())
+                        )
+                    if idx == 1 or idx == 2:
+                        acc_cond.append(
+                            (cond_pred.cpu().detach().numpy() == torch.transpose(cond_target, 0, 1)
+                             .cpu().detach().numpy()).all(axis=(0)).mean()
+                        )
+                    else:
+                        t = torch.transpose(
+                            torch.transpose(torch.stack([lab['input_ids'] for lab in cond_target]), 0, 1), 1, 2)
+                        acc_cond.append(
+                            (cond_pred.cpu().detach().numpy() == t.cpu().detach().numpy()).all(axis=(0, 1)).mean()
+                        )
+                accuracy.append(np.average(acc_cond))
+        return tuple(accuracy)

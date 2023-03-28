@@ -192,17 +192,13 @@ class Trainer():
         if self.metric == 'accuracy':
             predictions = self._get_predictions(outputs)
             if isinstance(predictions, tuple) or isinstance(predictions, list):
-                return tuple(accuracy_score(target.cpu().detach().numpy(), prediction.cpu().detach().numpy())
-                             for target, prediction in zip(targets, predictions))
+                return self.model.accuracy_score(predictions, targets)
             else:
                 return accuracy_score(targets.cpu().detach().numpy(), predictions.cpu().detach().numpy())
 
     def _get_predictions(self, outputs):
         if isinstance(outputs, tuple) or isinstance(outputs, list):
-            if self.pred_function_type:
-                return tuple(torch.argmax(self.pred_function(output), dim=-1) for output in outputs)
-            else:
-                return tuple(torch.argmax(output, dim=-1) for output in outputs)
+            return self.model.predict(outputs, function_type=self.pred_function_type)
         else:
             if self.pred_function_type:
                 return torch.argmax(self.pred_function(outputs), dim=-1)

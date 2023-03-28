@@ -67,7 +67,7 @@ class WikiSQLConditions(nn.Module):
         concat_o = torch.cat([cross_transpose_o] * dim_2, dim=-1)
         reshaped_in_o = concat_o.view(dim_0, dim_1, dim_2, self.hidden_dim)
         feed_forward_o = self.ff3(reshaped_in_o)
-        cond_op_out = self.op_out(feed_forward_o.mean(dim=2))
+        cond_op_out = self.op_out(feed_forward_o.mean(dim=1))
         # Step 4 - Condition text
         cond_text = self.cond_text_layer(data)
         cross_transpose_t = torch.transpose(cond_text, 1, 2)
