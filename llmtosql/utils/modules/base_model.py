@@ -8,13 +8,15 @@ logger = structlog.get_logger('__name__')
 
 
 class WikiSQLBase(nn.Module):
-    def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False, local_model_type=None):
+    def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False,
+                 local_model_type=None, heads=(True, True, True)):
         super().__init__()
         self.parameter = Parameter(torch.empty((1, 1)))
         self.base_model_type = base_model_type
         self.hidden_dim = N_lat
         self.attention_type = attention_type
         self.col_drop = col_drop
+        self.sel_head, self.agg_head, self.cond_head = heads
         logger.info(f'Using {attention_type} attention mechanism')
         if not base_model_type:
             logger.error(f'{type(base_model_type)}  not valid')
@@ -50,11 +52,13 @@ class WikiSQLBase(nn.Module):
     def unpack(self, data, device):
         inputs = (data['tokenized_inputs']['question'].to(device),
                   data['tokenized_inputs']['columns'].to(device))
-
-        sel_labels = data['labels']['sel'].to(self.device)
-        agg_labels = data['labels']['agg'].to(self.device)
-
-        return inputs, (sel_labels, agg_labels)
+        if self.sel_head:
+            sel_labels = data['labels']['sel'].to(self.device)
+        if self.agg_head:
+            agg_labels = data['labels']['agg'].to(self.device)
+        if self.cond_head:
+            conds_labels = data['labels']['conds'].to(self.device)
+        return inputs, (sel_labels, agg_labels, conds_labels)
 
     def compose_outputs(self, col_vector, final_vector, multi=False):
         comma = self.tokenizer.convert_tokens_to_ids(',')

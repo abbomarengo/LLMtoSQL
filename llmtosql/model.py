@@ -13,10 +13,12 @@ logger = structlog.get_logger('__name__')
 
 class WikiSQLModel(WikiSQLBase):
     def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False,
-                 local_model_type=None, max_conds=4):
+                 local_model_type=None, max_conds=4, heads=(True, True, True)):
         super().__init__(base_model_type, N_lat=N_lat, attention_type=attention_type,
-                         col_drop=col_drop, local_model_type=local_model_type)
-        self.n_heads = 3
+                         col_drop=col_drop, local_model_type=local_model_type, heads=heads)
+        self.n_heads = sum(heads)
+        self.head_names = [head for head, check in zip(['SELECT', 'AGG', 'CONDS'], heads) if check == True]
+        logger.info(f'{self.n_heads} heads model -- {self.head_names}')
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_type)
         self.model = AutoModel.from_pretrained(self.base_model_type)
         self.criterion = torch.nn.CrossEntropyLoss()
@@ -34,6 +36,7 @@ class WikiSQLModel(WikiSQLBase):
         self.logsoft2 = torch.nn.LogSoftmax(dim=1)
 
     def forward(self, data):
+        sel_out, agg_out, cond_out = None, None, None
         text_tokenized, columns_tokenized = data
         with torch.no_grad():
             text_outputs = self.model(**text_tokenized)
@@ -43,15 +46,18 @@ class WikiSQLModel(WikiSQLBase):
         text_last_hs = text_last_hs[:, 1:, :]
         columns_last_hs = columns_last_hs[:, 1:, :]
         layer_input = (text_last_hs, columns_last_hs)
-        sel_out = self.sel_layer(layer_input)
-        if self.col_drop or self.attention_type == 'cross':
-            sel_out = self.compose_outputs(columns_tokenized, sel_out)
-        agg_out = self.agg_layer(layer_input)
-        cond_out = self.cond_layer(layer_input)
-        if self.col_drop or self.attention_type == 'cross':
-            cond_num_out, cond_column_out, cond_op_out, cond_text_out = cond_out
-            cond_column_out = self.compose_outputs(columns_tokenized, cond_column_out, multi=True)
-            cond_out = (cond_num_out, cond_column_out, cond_op_out, cond_text_out)
+        if self.sel_head:
+            sel_out = self.sel_layer(layer_input)
+            if self.col_drop or self.attention_type == 'cross':
+                sel_out = self.compose_outputs(columns_tokenized, sel_out)
+        if self.agg_head:
+            agg_out = self.agg_layer(layer_input)
+        if self.cond_head:
+            cond_out = self.cond_layer(layer_input)
+            if self.col_drop or self.attention_type == 'cross':
+                cond_num_out, cond_column_out, cond_op_out, cond_text_out = cond_out
+                cond_column_out = self.compose_outputs(columns_tokenized, cond_column_out, multi=True)
+                cond_out = (cond_num_out, cond_column_out, cond_op_out, cond_text_out)
         return sel_out, agg_out, cond_out
 
     def tokenize(self, data):
@@ -78,7 +84,7 @@ class WikiSQLModel(WikiSQLBase):
                     ret.append(torch.argmax(self.soft1(output), dim=-1))
                 else:
                     ret.append(torch.argmax(self.logsoft1(output), dim=-1))
-            else:
+            elif isinstance(output, tuple):
                 cond_ret = []
                 for idx, cond_out in enumerate(output):
                     if idx == 0 or idx == 3:
@@ -92,6 +98,8 @@ class WikiSQLModel(WikiSQLBase):
                         else:
                             cond_ret.append(torch.argmax(self.logsoft2(output), dim=1))
                 ret.append(tuple(cond_ret))
+            else:
+                pass
         return tuple(ret)
 
     def loss(self, outputs, targets):
@@ -120,7 +128,7 @@ class WikiSQLModel(WikiSQLBase):
                 accuracy.append(
                     accuracy_score(target.cpu().detach().numpy(), prediction.cpu().detach().numpy())
                 )
-            else:
+            elif isinstance(prediction, tuple):
                 acc_cond = []
                 for idx, (cond_pred, cond_target) in enumerate(zip(prediction, target)):
                     if idx == 0:
@@ -139,4 +147,6 @@ class WikiSQLModel(WikiSQLBase):
                             (cond_pred.cpu().detach().numpy() == t.cpu().detach().numpy()).all(axis=(0, 1)).mean()
                         )
                 accuracy.append(np.average(acc_cond))
+            else:
+                pass
         return tuple(accuracy)
