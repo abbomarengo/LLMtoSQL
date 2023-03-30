@@ -209,10 +209,7 @@ class Trainer():
         self.model.train()
         self.model = self.model.to(self.device)
         running_loss = 0.
-        if self.n_heads == 1:
-            running_metric = 0.
-        else:
-            running_metric = [.0] * self.n_heads
+        running_metric = [.0] * self.n_heads
         with tqdm(self.train_loader, unit='batch') as tepoch:
             for i, data in enumerate(tepoch):
                 self.optimizer.zero_grad()
@@ -233,19 +230,11 @@ class Trainer():
                 if self.scheduler_type == 'CosineAnnealingWarmRestarts':
                     self.scheduler.step(epoch - 1 + i / len(self.train_loader))  # as per pytorch docs
                 if self.metric:
-                    if isinstance(outputs, tuple) or isinstance(outputs, list):
-                        if len(outputs) == self.n_heads:
-                            evaluated_metrics = self._evaluate(outputs, targets)
-                            for idx, metric in enumerate(running_metric):
-                                metric += evaluated_metrics[idx]
-                                running_metric[idx] = metric
-                            exec(self._create_string())
-                        else:
-                            raise IndexError('Number of outputs and number of metrics not matching.')
-                    else:
-                        running_metric += self._evaluate(outputs, targets)
-                        tepoch.set_postfix(loss=running_loss / len(self.train_loader),
-                                           metric=running_metric / len(self.train_loader))
+                    evaluated_metrics = self._evaluate(outputs, targets)
+                    for idx, metric in enumerate(running_metric):
+                        metric += evaluated_metrics[idx]
+                        running_metric[idx] = metric
+                    exec(self._create_string())
                 else:
                     tepoch.set_postfix(loss=loss.item())
                 del inputs, targets, outputs, loss
@@ -265,10 +254,7 @@ class Trainer():
         self.model.eval()
         self.model = self.model.to(self.device)
         running_loss = 0.
-        if self.n_heads == 1:
-            running_metric = 0.
-        else:
-            running_metric = [.0] * self.n_heads
+        running_metric = [.0] * self.n_heads
         with tqdm(self.val_loader, unit='batch') as tepoch:
             for data in tepoch:
                 if self.n_heads == 1:
@@ -284,19 +270,12 @@ class Trainer():
                     loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
-                    if isinstance(outputs, tuple) or isinstance(outputs, list):
-                        if len(outputs) == self.n_heads:
-                            evaluated_metrics = self._evaluate(outputs, targets)
-                            for idx, metric in enumerate(running_metric):
-                                metric += evaluated_metrics[idx]
-                                running_metric[idx] = metric
-                            exec(self._create_string(set_type='val'))
-                        else:
-                            raise IndexError('Number of outputs and number of metrics not matching.')
-                    else:
-                        running_metric += self._evaluate(outputs, targets)
-                        tepoch.set_postfix(loss=running_loss / len(self.val_loader),
-                                           metric=running_metric / len(self.val_loader))
+                    evaluated_metrics = self._evaluate(outputs, targets)
+                    for idx, metric in enumerate(running_metric):
+                        metric += evaluated_metrics[idx]
+                        running_metric[idx] = metric
+
+                    exec(self._create_string(set_type='val'))
                 else:
                     tepoch.set_postfix(loss=loss.item())
                 del inputs, targets, outputs, loss
@@ -362,10 +341,7 @@ class Trainer():
         self.test_loader = test_loader
         model = model.to(self.device)
         running_loss = 0.
-        if self.n_heads == 1:
-            running_metric = 0.
-        else:
-            running_metric = [.0] * self.n_heads
+        running_metric = [.0] * self.n_heads
         with tqdm(test_loader, unit='batch') as tepoch:
             for data in tepoch:
                 if self.n_heads == 1:
@@ -381,19 +357,11 @@ class Trainer():
                     loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
-                    if isinstance(outputs, tuple) or isinstance(outputs, list):
-                        if len(outputs) == self.n_heads:
-                            evaluated_metrics = self._evaluate(outputs, targets)
-                            for idx, metric in enumerate(running_metric):
-                                metric += evaluated_metrics[idx]
-                                running_metric[idx] = metric
-                            exec(self._create_string(set_type='test'))
-                        else:
-                            raise IndexError('Number of outputs and number of metrics not matching.')
-                    else:
-                        running_metric += self._evaluate(outputs, targets)
-                        tepoch.set_postfix(loss=running_loss / len(test_loader),
-                                           metric=running_metric / len(test_loader))
+                    evaluated_metrics = self._evaluate(outputs, targets)
+                    for idx, metric in enumerate(running_metric):
+                        metric += evaluated_metrics[idx]
+                        running_metric[idx] = metric
+                    exec(self._create_string(set_type='test'))
                 else:
                     tepoch.set_postfix(loss=loss.item())
                 del inputs, targets, outputs, loss
