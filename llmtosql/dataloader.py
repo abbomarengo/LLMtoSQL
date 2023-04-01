@@ -42,13 +42,16 @@ class WikiSQLDataset(Dataset):
         agg = self.data[item]['sql']['agg']
         cond_1 = [int(cond[0]) for cond in self.data[item]['sql']['conds']]
         cond_2 = [int(cond[1]) for cond in self.data[item]['sql']['conds']]
-        if len(cond_1) != self.maxcondsLength:
-            list_extension = [-100]*(self.maxcondsLength-len(cond_1))
-            cond_1.extend(list_extension)
-        if len(cond_2) != self.maxcondsLength:
-            list_extension = [-100]*(self.maxcondsLength-len(cond_2))
-            cond_2.extend(list_extension)
         if self.model:
+            if len(cond_1) != self.maxcondsLength:
+                list_extension = [self.model.seq_len-1] * (self.maxcondsLength - len(cond_1))
+                cond_1.extend(list_extension)
+            if len(cond_2) != self.maxcondsLength:
+                list_extension = [self.model.cond_op_out-1] * (self.maxcondsLength - len(cond_2))
+                cond_2.extend(list_extension)
+            if self.model.max_conds != self.maxcondsLength:
+                raise AttributeError(f'Model max condition out does not much max condition out un labels. '
+                                     f'Found {self.maxcondsLength} mal condition in labels.')
             cond_0 = self.data[item]['cond_num']
             seq_len = self.model.seq_len
             empty_tensor = torch.zeros(seq_len, dtype=torch.int8)
@@ -79,6 +82,12 @@ class WikiSQLDataset(Dataset):
                 }
             }
         else:
+            if len(cond_1) != self.maxcondsLength:
+                list_extension = [-100] * (self.maxcondsLength - len(cond_1))
+                cond_1.extend(list_extension)
+            if len(cond_2) != self.maxcondsLength:
+                list_extension = [-100] * (self.maxcondsLength - len(cond_2))
+                cond_2.extend(list_extension)
             cond_3 = [str(cond[2]) for cond in self.data[item]['sql']['conds']]
             if len(cond_3) != self.maxcondsLength:
                 list_extension = ['']*(self.maxcondsLength-len(cond_3))

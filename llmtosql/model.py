@@ -13,12 +13,14 @@ logger = structlog.get_logger('__name__')
 
 class WikiSQLModel(WikiSQLBase):
     def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False,
-                 local_model_type=None, max_conds=4, heads=(True, True, True)):
+                 local_model_type=None, cond_op_out=7, max_conds=4, heads=(True, True, True)):
         super().__init__(base_model_type, N_lat=N_lat, attention_type=attention_type,
                          col_drop=col_drop, local_model_type=local_model_type, heads=heads)
         self.n_heads = sum(heads)
         self.head_names = [head for head, check in zip(['SELECT', 'AGG', 'CONDS'], heads) if check == True]
         logger.info(f'{self.n_heads} heads model -- {self.head_names}')
+        self.cond_op_out = cond_op_out
+        self.max_conds = max_conds
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_type)
         self.model = AutoModel.from_pretrained(self.base_model_type)
         self.criterion = torch.nn.CrossEntropyLoss()
@@ -27,7 +29,7 @@ class WikiSQLModel(WikiSQLBase):
         self.seq_len = self.model.config.max_position_embeddings
         self.vocab_size = self.model.config.vocab_size
         self.sel_layer = WikiSQLSelect(self.hidden_dim, attention_type)
-        self.agg_layer = WikiSQLSAgg(self.hidden_dim, 6, attention_type)
+        self.agg_layer = WikiSQLSAgg(self.hidden_dim, cond_op_out, attention_type)
         self.cond_layer = WikiSQLConditions(self.tokenizer, self.hidden_dim, self.seq_len,
                                             self.vocab_size, attention_type, max_conds)
         self.soft1 = torch.nn.Softmax(dim=-1)
