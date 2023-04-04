@@ -13,13 +13,13 @@ logger = structlog.get_logger('__name__')
 
 class WikiSQLModel(WikiSQLBase):
     def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False,
-                 local_model_type=None, cond_op_out=7, max_conds=4, heads=(True, True, True), inference=True):
+                 local_model_type=None, op_out=6, max_conds=4, heads=(True, True, True), inference=True):
         super().__init__(base_model_type, N_lat=N_lat, attention_type=attention_type,
                          col_drop=col_drop, local_model_type=local_model_type, heads=heads)
         self.n_heads = sum(heads)
         self.head_names = [head for head, check in zip(['SELECT', 'AGG', 'CONDS'], heads) if check == True]
         logger.info(f'{self.n_heads} heads model -- {self.head_names}')
-        self.cond_op_out = cond_op_out
+        self.cond_op_out = op_out + 1
         self.max_conds = max_conds
         self.tokenizer = AutoTokenizer.from_pretrained(self.base_model_type)
         self.model = AutoModel.from_pretrained(self.base_model_type)
@@ -29,8 +29,8 @@ class WikiSQLModel(WikiSQLBase):
         self.seq_len = self.model.config.max_position_embeddings
         self.vocab_size = self.model.config.vocab_size
         self.sel_layer = WikiSQLSelect(self.hidden_dim, attention_type)
-        self.agg_layer = WikiSQLSAgg(self.hidden_dim, cond_op_out, attention_type)
-        self.cond_layer = WikiSQLConditions(self.tokenizer, self.hidden_dim, self.seq_len,
+        self.agg_layer = WikiSQLSAgg(self.hidden_dim, op_out, attention_type)
+        self.cond_layer = WikiSQLConditions(self.tokenizer, self.hidden_dim, self.cond_op_out, self.seq_len,
                                             self.vocab_size, attention_type, max_conds=self.max_conds,
                                             inference=inference)
         self.soft1 = torch.nn.Softmax(dim=-1)
@@ -80,6 +80,8 @@ class WikiSQLModel(WikiSQLBase):
         return text_tokenized, columns_tokenized
 
     def predict(self, logits, function_type='softmax'):
+        if (None in logits):
+            logits = tuple([output for output in logits if output is not None])
         ret = []
         for output in logits:
             if isinstance(output, torch.Tensor):
@@ -90,41 +92,49 @@ class WikiSQLModel(WikiSQLBase):
             elif isinstance(output, tuple):
                 cond_ret = []
                 for idx, cond_out in enumerate(output):
-                    if idx == 0 or idx == 3:
+                    if idx != 1:
                         if function_type == 'softmax':
-                            cond_ret.append(torch.argmax(self.soft1(output), dim=-1))
+                            cond_ret.append(torch.argmax(self.soft1(cond_out), dim=-1))
                         else:
-                            cond_ret.append(torch.argmax(self.logsoft1(output), dim=-1))
+                            cond_ret.append(torch.argmax(self.logsoft1(cond_out), dim=-1))
                     else:
                         if function_type == 'softmax':
-                            cond_ret.append(torch.argmax(self.soft2(output), dim=1))
+                            cond_ret.append(torch.argmax(self.soft2(cond_out), dim=1))
                         else:
-                            cond_ret.append(torch.argmax(self.logsoft2(output), dim=1))
+                            cond_ret.append(torch.argmax(self.logsoft2(cond_out), dim=1))
                 ret.append(tuple(cond_ret))
             else:
                 pass
         return tuple(ret)
 
     def loss(self, outputs, targets):
+        if (None in outputs) and (None in targets):
+            outputs = tuple([output for output in outputs if output is not None])
+            targets = tuple([target for target in targets if target is not None])
         loss = .0
         for output, target in zip(outputs, targets):
             if isinstance(output, torch.Tensor):
-                loss += self.criterion(output, target).item()
+                loss += self.criterion(output, target)
             else:
                 for idx, (cond_out, cond_lab) in enumerate(zip(output, target)):
                     if idx == 0:
-                        loss += self.criterion(cond_out, cond_lab).item()
-                    if idx == 1 or idx == 2:
-                        loss += self.criterion(cond_out, torch.transpose(torch.stack(cond_lab), 0, 1)).item()
+                        loss += self.criterion(cond_out, cond_lab)
+                    elif idx == 1:
+                        loss += self.criterion(cond_out, torch.transpose(torch.stack(cond_lab), 0, 1))
+                    elif idx == 2:
+                        loss += self.criterion(torch.transpose(cond_out, 1, 2 ),
+                                               torch.transpose(torch.stack(cond_lab), 0, 1))
                     else:
                         for idx, cond_lab_text in enumerate(cond_lab):
                             loss += self.criterion(torch.transpose(cond_out[:, :, idx, :], 1, 2),
-                                                   cond_lab_text['input_ids']).item()
+                                                   cond_lab_text['input_ids'].long())
         # losses = [self.criterion(output, target) for output, target in zip(outputs, targets)]
         # loss = torch.stack(losses, dim=0).sum(dim=0)
         return loss
 
-    def accuracy_scores(self, predictions, targets):
+    def calculate_accuracy(self, predictions, targets):
+        if None in targets:
+            targets = tuple([target for target in targets if target is not None])
         accuracy = []
         for prediction, target in zip(predictions, targets):
             if isinstance(prediction, torch.Tensor):
@@ -138,9 +148,9 @@ class WikiSQLModel(WikiSQLBase):
                         acc_cond.append(
                             accuracy_score(cond_target.cpu().detach().numpy(), cond_pred.cpu().detach().numpy())
                         )
-                    if idx == 1 or idx == 2:
+                    elif (idx == 1) or (idx == 2):
                         acc_cond.append(
-                            (cond_pred.cpu().detach().numpy() == torch.transpose(cond_target, 0, 1)
+                            (cond_pred.cpu().detach().numpy() == torch.transpose(torch.stack(cond_target), 0, 1)
                              .cpu().detach().numpy()).all(axis=(0)).mean()
                         )
                     else:

@@ -28,7 +28,7 @@ def main(args):
         'backend': args.backend
     }
     trainer = Trainer(model, datasets=datasets, epochs=25, batch_size=32,
-                      is_parallel=True, save_history=True, **config)
+                      is_parallel=True, save_history=True, custom_model=True, **config)
     trainer.fit()
 
 

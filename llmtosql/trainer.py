@@ -17,10 +17,11 @@ logger = structlog.get_logger('__name__')
 
 class Trainer():
     def __init__(self, model, datasets=None, epochs=None, batch_size=None,
-                 is_parallel=False, save_history=False, **config):
+                 is_parallel=False, save_history=False, custom_model=False, **config):
         logger.info('Config inputs.', config=config)
         allowed_kwargs = {"seed", "scheduler", "optimizer", "momentum", "weight_decay",
                           "lr", "criterion", "metric", "pred_function", "model_dir", "backend"}
+        self.custom_model = custom_model
         self.validate = True
         self.validate_kwargs(config, allowed_kwargs)
         # Unpack kwargs
@@ -192,7 +193,7 @@ class Trainer():
         if self.metric == 'accuracy':
             predictions = self._get_predictions(outputs)
             if isinstance(predictions, tuple) or isinstance(predictions, list):
-                return self.model.accuracy_score(predictions, targets)
+                return self.model.calculate_accuracy(predictions, targets)
             else:
                 return accuracy_score(targets.cpu().detach().numpy(), predictions.cpu().detach().numpy())
 
@@ -213,12 +214,12 @@ class Trainer():
         with tqdm(self.train_loader, unit='batch') as tepoch:
             for i, data in enumerate(tepoch):
                 self.optimizer.zero_grad()
-                if self.n_heads == 1:
+                if self.custom_model:
+                    inputs, targets = self.model.unpack(data, self.device)
+                else:
                     inputs, targets = data
                     inputs = inputs.to(self.device)
                     targets = targets.to(self.device)
-                else:
-                    inputs, targets = self.model.unpack(data, self.device)
                 outputs = self.model(inputs)
                 if self.criterion is None:
                     loss = self.model.loss(outputs, targets)
@@ -257,12 +258,12 @@ class Trainer():
         running_metric = [.0] * self.n_heads
         with tqdm(self.val_loader, unit='batch') as tepoch:
             for data in tepoch:
-                if self.n_heads == 1:
+                if self.custom_model:
+                    inputs, targets = self.model.unpack(data, self.device)
+                else:
                     inputs, targets = data
                     inputs = inputs.to(self.device)
                     targets = targets.to(self.device)
-                else:
-                    inputs, targets = self.model.unpack(data, self.device)
                 outputs = self.model(inputs)
                 if self.criterion is None:
                     loss = self.model.loss(outputs, targets)
@@ -344,12 +345,12 @@ class Trainer():
         running_metric = [.0] * self.n_heads
         with tqdm(test_loader, unit='batch') as tepoch:
             for data in tepoch:
-                if self.n_heads == 1:
+                if self.custom_model:
+                    inputs, targets = self.model.unpack(data, self.device)
+                else:
                     inputs, targets = data
                     inputs = inputs.to(self.device)
                     targets = targets.to(self.device)
-                else:
-                    inputs, targets = self.model.unpack(data, self.device)
                 outputs = self.model(inputs)
                 if self.criterion is None:
                     loss = self.model.loss(outputs, targets)

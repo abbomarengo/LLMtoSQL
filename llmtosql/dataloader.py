@@ -40,32 +40,35 @@ class WikiSQLDataset(Dataset):
         input = self.data[item]['question']
         sel = self.data[item]['sql']['sel']
         agg = self.data[item]['sql']['agg']
-        cond_1 = [int(cond[0]) for cond in self.data[item]['sql']['conds']]
-        cond_2 = [int(cond[1]) for cond in self.data[item]['sql']['conds']]
+        cond_1 = [int(cond[0]) + 1 for cond in self.data[item]['sql']['conds']]
+        cond_2 = [int(cond[1]) + 1 for cond in self.data[item]['sql']['conds']]
         if self.model:
             if len(cond_1) != self.maxcondsLength:
-                list_extension = [self.model.seq_len-1] * (self.maxcondsLength - len(cond_1))
+                list_extension = [0] * (self.maxcondsLength - len(cond_1))
                 cond_1.extend(list_extension)
             if len(cond_2) != self.maxcondsLength:
-                list_extension = [self.model.cond_op_out-1] * (self.maxcondsLength - len(cond_2))
+                list_extension = [0] * (self.maxcondsLength - len(cond_2))
                 cond_2.extend(list_extension)
             if self.model.max_conds != self.maxcondsLength:
-                raise AttributeError(f'Model max condition out does not much max condition out un labels. '
-                                     f'Found {self.maxcondsLength} mal condition in labels.')
+                raise AttributeError(f'Model max condition out does not much max condition out in labels. '
+                                     f'Found {self.maxcondsLength} max condition in labels.')
             cond_0 = self.data[item]['cond_num']
             seq_len = self.model.seq_len
-            empty_tensor = torch.zeros(seq_len, dtype=torch.int8)
+            empty_tensor = torch.zeros(seq_len - 1)
             columns = self.data[item]['columns']
             tokenized_inputs = self.data[item]['tokenized_inputs']
             tokenized_cond_3 = self.data[item]['tokenized_cond_3']
             try:
-                cond_3 = [BatchEncoding({k: v.squeeze() for k,v in cond[0].items()}) for cond in tokenized_cond_3]
+                cond_3 = [BatchEncoding({k: v[:, 1:].squeeze() for k, v in cond[0].items()})
+                          for cond in tokenized_cond_3]
             except:
-                cond_3 = [{'input_ids': empty_tensor, 'token_type_ids': empty_tensor, 'attention_mask': empty_tensor}]
+                cond_3 = [BatchEncoding({'input_ids': empty_tensor,
+                                         'token_type_ids': empty_tensor,
+                                         'attention_mask': empty_tensor})]
             if len(cond_3) != self.maxcondsLength:
-                list_extension = [{'input_ids': empty_tensor,
-                                   'token_type_ids': empty_tensor,
-                                   'attention_mask': empty_tensor}]*(self.maxcondsLength-len(cond_3))
+                list_extension = [BatchEncoding({'input_ids': empty_tensor,
+                                                 'token_type_ids': empty_tensor,
+                                                 'attention_mask': empty_tensor})]*(self.maxcondsLength-len(cond_3))
                 cond_3.extend(list_extension)
             return {
                 'table_id': str(table),

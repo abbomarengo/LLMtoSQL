@@ -10,7 +10,7 @@ logger = structlog.get_logger('__name__')
 
 
 class WikiSQLConditions(nn.Module):
-    def __init__(self, tokenizer, hidden_dim, seq_len, vocab_size, attention_type, max_conds=4, inference=True):
+    def __init__(self, tokenizer, hidden_dim, cond_op_out, seq_len, vocab_size, attention_type, max_conds=4, inference=True):
         super().__init__()
         self.tokenizer = tokenizer
         self.hidden_dim = hidden_dim
@@ -22,7 +22,7 @@ class WikiSQLConditions(nn.Module):
         self.pred_function = Softmax(dim=-1)
         if self.attention_type == 'cross':
             # Step 1 - condition number
-            self.cond_num_layer = WikiSQLSAgg(self.hidden_dim, max_conds, attention_type)
+            self.cond_num_layer = WikiSQLSAgg(self.hidden_dim, max_conds + 1, attention_type)
             # Step 2 - condition columns
             self.cond_column = WikiSQLBaseModule(self.hidden_dim, self.hidden_dim, attention_type)
             self.ff2 = nn.Sequential(nn.Linear(self.hidden_dim, self.hidden_dim),
@@ -32,7 +32,7 @@ class WikiSQLConditions(nn.Module):
             self.cond_op = WikiSQLBaseModule(self.hidden_dim, self.hidden_dim, attention_type)
             self.ff3 = nn.Sequential(nn.Linear(self.hidden_dim, self.hidden_dim),
                                      nn.Tanh(), nn.Linear(self.hidden_dim, self.hidden_dim))
-            self.op_out = nn.Linear(self.hidden_dim, 6)
+            self.op_out = nn.Linear(self.hidden_dim, cond_op_out)
             # Step 4 - Condition text
             self.cond_text_layer = WikiSQLBaseModule(self.hidden_dim, self.hidden_dim, attention_type)
             self.ff4 = nn.Sequential(nn.Linear(self.hidden_dim, self.hidden_dim),
@@ -51,7 +51,7 @@ class WikiSQLConditions(nn.Module):
         num_conditions = torch.argmax(self.pred_function(cond_num_out), dim=-1)
         # Prep for next steps
         dim_0 = data[0].shape[0]
-        dim_1 = self.seq_len
+        dim_1 = data[0].shape[1]
         if self.inference:
             dim_2 = torch.max(num_conditions).item()
         else:
