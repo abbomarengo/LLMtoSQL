@@ -40,7 +40,7 @@ class WikiSQLDataset(Dataset):
         input = self.data[item]['question']
         sel = self.data[item]['sql']['sel']
         agg = self.data[item]['sql']['agg']
-        cond_1 = [int(cond[0]) + 1 for cond in self.data[item]['sql']['conds']]
+        cond_1 = [int(cond[0]) for cond in self.data[item]['sql']['conds']]
         cond_2 = [int(cond[1]) + 1 for cond in self.data[item]['sql']['conds']]
         if self.model:
             if len(cond_1) != self.maxcondsLength:
