@@ -54,7 +54,7 @@ class WikiSQLDataset(Dataset):
                                      f'Found {self.maxcondsLength} max condition in labels.')
             cond_0 = self.data[item]['cond_num']
             seq_len = self.model.seq_len
-            empty_tensor = torch.zeros(seq_len - 1)
+            empty_tensor = torch.zeros(seq_len - 1, dtype=torch.int)
             columns = self.data[item]['columns']
             tokenized_inputs = self.data[item]['tokenized_inputs']
             tokenized_cond_3 = self.data[item]['tokenized_cond_3']

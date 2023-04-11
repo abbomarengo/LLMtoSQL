@@ -127,7 +127,10 @@ class Trainer():
             self.scheduler = self.scheduler_options[self.scheduler_type]
         self.pred_function = self._get_prediction_function()
         try:
-            self.n_heads = self.model.n_heads
+            if self.is_parallel:
+                self.n_heads = self.model.module.n_heads
+            else:
+                self.n_heads = self.model.n_heads
         except:
             self.n_heads = 1
 
@@ -193,13 +196,19 @@ class Trainer():
         if self.metric == 'accuracy':
             predictions = self._get_predictions(outputs)
             if isinstance(predictions, tuple) or isinstance(predictions, list):
-                return self.model.calculate_accuracy(predictions, targets)
+                if self.is_parallel:
+                    return self.model.module.calculate_accuracy(predictions, targets)
+                else:
+                    return self.model.calculate_accuracy(predictions, targets)
             else:
                 return accuracy_score(targets.cpu().detach().numpy(), predictions.cpu().detach().numpy())
 
     def _get_predictions(self, outputs):
         if isinstance(outputs, tuple) or isinstance(outputs, list):
-            return self.model.predict(outputs, function_type=self.pred_function_type)
+            if self.is_parallel:
+                return self.model.module.predict(outputs, function_type=self.pred_function_type)
+            else:
+                return self.model.predict(outputs, function_type=self.pred_function_type)
         else:
             if self.pred_function_type:
                 return torch.argmax(self.pred_function(outputs), dim=-1)
@@ -215,14 +224,20 @@ class Trainer():
             for i, data in enumerate(tepoch):
                 self.optimizer.zero_grad()
                 if self.custom_model:
-                    inputs, targets = self.model.unpack(data, self.device)
+                    if self.is_parallel:
+                        inputs, targets = self.model.module.unpack(data, self.device)
+                    else:
+                        inputs, targets = self.model.unpack(data, self.device)
                 else:
                     inputs, targets = data
                     inputs = inputs.to(self.device)
                     targets = targets.to(self.device)
                 outputs = self.model(inputs)
                 if self.criterion is None:
-                    loss = self.model.loss(outputs, targets)
+                    if self.is_parallel:
+                        loss = self.model.module.loss(outputs, targets)
+                    else:
+                        loss = self.model.loss(outputs, targets)
                 else:
                     loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
@@ -259,14 +274,20 @@ class Trainer():
         with tqdm(self.val_loader, unit='batch') as tepoch:
             for data in tepoch:
                 if self.custom_model:
-                    inputs, targets = self.model.unpack(data, self.device)
+                    if self.is_parallel:
+                        inputs, targets = self.model.module.unpack(data, self.device)
+                    else:
+                        inputs, targets = self.model.unpack(data, self.device)
                 else:
                     inputs, targets = data
                     inputs = inputs.to(self.device)
                     targets = targets.to(self.device)
                 outputs = self.model(inputs)
                 if self.criterion is None:
-                    loss = self.model.loss(outputs, targets)
+                    if self.is_parallel:
+                        loss = self.model.module.loss(outputs, targets)
+                    else:
+                        loss = self.model.loss(outputs, targets)
                 else:
                     loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
@@ -346,14 +367,14 @@ class Trainer():
         with tqdm(test_loader, unit='batch') as tepoch:
             for data in tepoch:
                 if self.custom_model:
-                    inputs, targets = self.model.unpack(data, self.device)
+                    inputs, targets = model.unpack(data, self.device)
                 else:
                     inputs, targets = data
                     inputs = inputs.to(self.device)
                     targets = targets.to(self.device)
-                outputs = self.model(inputs)
+                outputs = model(inputs)
                 if self.criterion is None:
-                    loss = self.model.loss(outputs, targets)
+                    loss = model.loss(outputs, targets)
                 else:
                     loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
