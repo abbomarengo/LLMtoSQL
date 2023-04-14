@@ -71,13 +71,19 @@ class WikiSQLBase(nn.Module):
 
     def compose_outputs(self, col_vector, final_vector, multi=False):
         comma = self.tokenizer.convert_tokens_to_ids(',')
-        comma_idx = (col_vector['input_ids'] == comma).nonzero(as_tuple=True)
+        if (len(final_vector.shape) == 1) or (multi and (len(final_vector.shape) == 2)):
+            final_vector = final_vector.unsqueeze(0)
+        if len(col_vector['input_ids'].shape) == 1:
+            col_indices = col_vector['input_ids'].unsqueeze(0)
+        else:
+            col_indices = col_vector['input_ids']
+        comma_idx = (col_indices == comma).nonzero(as_tuple=True)
         comma_idx = (
             comma_idx[0],
             comma_idx[1] - 1
         )
         dim_1 = torch.max(torch.unique(comma_idx[0], return_counts=True)[1]).item() + 1
-        dim_0 = len(col_vector['input_ids'])
+        dim_0 = col_indices.shape[0]
         if multi:
             dim_2 = final_vector.shape[2]
         device_n = self.parameter.get_device()
