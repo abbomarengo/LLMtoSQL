@@ -2,6 +2,8 @@ import torch
 from torch import nn
 import structlog
 
+from .base_module import WikiSQLBaseModule
+
 logger = structlog.get_logger('__name__')
 
 
@@ -11,8 +13,7 @@ class WikiSQLSelect(nn.Module):
         self.hidden_dim = hidden_dim
         self.attention_type = attention_type
         if self.attention_type == 'cross':
-            self.cross_att = nn.MultiheadAttention(self.hidden_dim, 8, batch_first=True)
-            self.batch_norm = nn.BatchNorm1d(self.hidden_dim)
+            self.select_layer = WikiSQLBaseModule(self.hidden_dim, self.hidden_dim, attention_type)
             self.out = nn.Linear(self.hidden_dim, 1)
         elif self.attention_type == 'sqlnet':
             # FROM SQLNET
@@ -26,14 +27,12 @@ class WikiSQLSelect(nn.Module):
             raise TypeError(f'Was not able to load SELECT module -  {type(self.attention_type)}  not valid')
 
     def forward(self, data):
-        text_last_hs, columns_last_hs = data
         if self.attention_type == 'cross':
-            attn_output, _ = self.cross_att(columns_last_hs, text_last_hs, text_last_hs)
-            cross_attention_add = torch.add(columns_last_hs, attn_output)
-            cross_attention_norm = self.batch_norm(torch.transpose(cross_attention_add, 1, 2))
-            ret = self.out(torch.transpose(cross_attention_norm, 1, 2)).squeeze()
+            sel_out = self.select_layer(data)
+            ret = self.out(sel_out).squeeze()
             return ret
         elif self.attention_type == 'sqlnet':
+            text_last_hs, columns_last_hs = data
             # FROM SQLNET
             att_val = self.sel_att(text_last_hs).squeeze()
             att = self.softmax(att_val)
