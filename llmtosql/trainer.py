@@ -12,19 +12,16 @@ import pickle
 # SageMaker data parallel: Import PyTorch's distributed API
 import torch.distributed as dist
 
-# Local import
-
-from .utils.functions import custom_loss_function
-
 logger = structlog.get_logger('__name__')
 
 
 class Trainer():
     def __init__(self, model, datasets=None, epochs=None, batch_size=None,
-                 is_parallel=False, save_history=False, **config):
+                 is_parallel=False, save_history=False, custom_model=False, **config):
         logger.info('Config inputs.', config=config)
         allowed_kwargs = {"seed", "scheduler", "optimizer", "momentum", "weight_decay",
                           "lr", "criterion", "metric", "pred_function", "model_dir", "backend"}
+        self.custom_model = custom_model
         self.validate = True
         self.validate_kwargs(config, allowed_kwargs)
         # Unpack kwargs
@@ -115,7 +112,10 @@ class Trainer():
             self.model = self.model.to(self.device)
         logger.info(f'Training on device: {self.device}.')
         criterion = self._get_criterion()
-        self.criterion = criterion.to(self.device)
+        if self.criterion_type != 'custom':
+            self.criterion = criterion.to(self.device)
+        else:
+            self.criterion = criterion
         self.optimizer = self._get_optimizer()
         self.scheduler_options = {
             'CosineAnnealingWarmRestarts': torch.optim.lr_scheduler.CosineAnnealingWarmRestarts(self.optimizer, T_0=5,
@@ -126,6 +126,13 @@ class Trainer():
         if self.scheduler_type:
             self.scheduler = self.scheduler_options[self.scheduler_type]
         self.pred_function = self._get_prediction_function()
+        try:
+            if self.is_parallel:
+                self.n_heads = self.model.module.n_heads
+            else:
+                self.n_heads = self.model.n_heads
+        except:
+            self.n_heads = 1
 
     def _get_prediction_function(self):
         if self.pred_function_type == 'logsoftmax':
@@ -137,32 +144,42 @@ class Trainer():
 
     def _get_optimizer(self):
         if self.optimizer_type == 'sgd':
+            logger.info('Using SGD optimizer')
             return optim.SGD(self.model.parameters(), lr=self.lr,
                              momentum=self.momentum, weight_decay=self.weight_decay)
         if self.optimizer_type == 'adam':
+            logger.info('Using ADAM optimizer')
             return optim.Adam(self.model.parameters(), lr=self.lr,
                               weight_decay=self.weight_decay)
         if self.optimizer_type == 'adagrad':
+            logger.info('Using ADAGRAD optimizer')
             return optim.Adagrad(self.model.parameters(), lr=self.lr,
                                  weight_decay=self.weight_decay)
         if self.optimizer_type == 'adamax':
+            logger.info('Using ADAMAX optimizer')
             return optim.Adamax(self.model.parameters(), lr=self.lr,
                                 weight_decay=self.weight_decay)
         if self.optimizer_type == 'adamw':
+            logger.info('Using ADAMW optimizer')
             return optim.AdamW(self.model.parameters(), lr=self.lr,
                                weight_decay=self.weight_decay)
 
     def _get_criterion(self):
         if self.criterion_type == 'cross_entropy':
+            logger.info('Using CROSS ENTROPY loss')
             return torch.nn.CrossEntropyLoss()
         if self.criterion_type == 'neg-loss':
+            logger.info('Using NEG LOSS loss')
             return torch.nn.NLLLoss
         if self.criterion_type == 'l1':
+            logger.info('Using L1 loss')
             return torch.nn.L1Loss()
         if self.criterion_type == 'l2':
+            logger.info('Using L2 loss')
             return torch.nn.MSELoss
         if self.criterion_type == 'custom':
-            return custom_loss_function
+            logger.info('Using CUSTOM loss')
+            return None
 
     def _average_gradients(self):
         # Average gradients (only for multi-node CPU)
@@ -178,43 +195,74 @@ class Trainer():
             return torch.mean(torch.sqrt(colwise_mse), dim=0)
         if self.metric == 'accuracy':
             predictions = self._get_predictions(outputs)
-            return accuracy_score(targets.cpu().detach().numpy(), predictions.cpu().detach().numpy())
+            if isinstance(predictions, tuple) or isinstance(predictions, list):
+                if self.is_parallel:
+                    return self.model.module.calculate_accuracy(predictions, targets)
+                else:
+                    return self.model.calculate_accuracy(predictions, targets)
+            else:
+                return accuracy_score(targets.cpu().detach().numpy(), predictions.cpu().detach().numpy())
 
     def _get_predictions(self, outputs):
-        if self.pred_function_type:
-            return torch.argmax(self.pred_function(outputs), dim=-1)
+        if isinstance(outputs, tuple) or isinstance(outputs, list):
+            if self.is_parallel:
+                return self.model.module.predict(outputs, function_type=self.pred_function_type)
+            else:
+                return self.model.predict(outputs, function_type=self.pred_function_type)
         else:
-            return torch.argmax(outputs, dim=-1)
+            if self.pred_function_type:
+                return torch.argmax(self.pred_function(outputs), dim=-1)
+            else:
+                return torch.argmax(outputs, dim=-1)
 
     def _train_one_epoch(self, epoch):
         self.model.train()
         self.model = self.model.to(self.device)
         running_loss = 0.
-        running_metric = 0.
+        running_metric = [.0] * self.n_heads
         with tqdm(self.train_loader, unit='batch') as tepoch:
             for i, data in enumerate(tepoch):
                 self.optimizer.zero_grad()
-                outputs = self.model_forward(data)
-                targets = data['labels']['sel'].to(self.device)
-                loss = self.criterion(outputs, targets)
+                if self.custom_model:
+                    if self.is_parallel:
+                        inputs, targets = self.model.module.unpack(data, self.device)
+                    else:
+                        inputs, targets = self.model.unpack(data, self.device)
+                else:
+                    inputs, targets = data
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                outputs = self.model(inputs)
+                if self.criterion is None:
+                    if self.is_parallel:
+                        loss = self.model.module.loss(outputs, targets)
+                    else:
+                        loss = self.model.loss(outputs, targets)
+                else:
+                    loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 loss.backward()
                 self.optimizer.step()
                 if self.scheduler_type == 'CosineAnnealingWarmRestarts':
                     self.scheduler.step(epoch - 1 + i / len(self.train_loader))  # as per pytorch docs
                 if self.metric:
-                    running_metric += self._evaluate(outputs, targets)
-                    tepoch.set_postfix(loss=running_loss / len(self.train_loader),
-                                       metric=running_metric / len(self.train_loader))
+                    evaluated_metrics = self._evaluate(outputs, targets)
+                    for idx, metric in enumerate(running_metric):
+                        metric += evaluated_metrics[idx]
+                        running_metric[idx] = metric
+                    exec(self._create_string())
                 else:
                     tepoch.set_postfix(loss=loss.item())
-                del targets, outputs, loss
+                del inputs, targets, outputs, loss
         if self.scheduler_type == 'StepLR':
             self.scheduler.step()
         train_loss = running_loss / len(self.train_loader)
         self.train_losses.append(train_loss)
         if self.metric:
-            self.train_metrics.append(running_metric / len(self.train_loader))
+            if self.n_heads == 1:
+                self.train_metrics.append(running_metric / len(self.train_loader))
+            else:
+                self.train_metrics.append([metric / len(self.train_loader) for metric in running_metric])
         del running_metric
 
     @torch.no_grad()
@@ -222,24 +270,44 @@ class Trainer():
         self.model.eval()
         self.model = self.model.to(self.device)
         running_loss = 0.
-        running_metric = 0.
+        running_metric = [.0] * self.n_heads
         with tqdm(self.val_loader, unit='batch') as tepoch:
             for data in tepoch:
-                outputs = self.model_forward(data)
-                targets = data['labels']['sel'].to(self.device)
-                loss = self.criterion(outputs, targets)
+                if self.custom_model:
+                    if self.is_parallel:
+                        inputs, targets = self.model.module.unpack(data, self.device)
+                    else:
+                        inputs, targets = self.model.unpack(data, self.device)
+                else:
+                    inputs, targets = data
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                outputs = self.model(inputs)
+                if self.criterion is None:
+                    if self.is_parallel:
+                        loss = self.model.module.loss(outputs, targets)
+                    else:
+                        loss = self.model.loss(outputs, targets)
+                else:
+                    loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
-                    running_metric += self._evaluate(outputs, targets)
-                    tepoch.set_postfix(loss=running_loss / len(self.val_loader),
-                                       metric=running_metric / len(self.val_loader))
+                    evaluated_metrics = self._evaluate(outputs, targets)
+                    for idx, metric in enumerate(running_metric):
+                        metric += evaluated_metrics[idx]
+                        running_metric[idx] = metric
+
+                    exec(self._create_string(set_type='val'))
                 else:
                     tepoch.set_postfix(loss=loss.item())
-                del targets, outputs, loss
+                del inputs, targets, outputs, loss
         val_loss = running_loss / len(self.val_loader)
         self.val_losses.append(val_loss)
         if self.metric:
-            self.val_metrics.append(running_metric / len(self.val_loader))
+            if self.n_heads == 1:
+                self.val_metrics.append(running_metric / len(self.val_loader))
+            else:
+                self.val_metrics.append([metric / len(self.val_loader) for metric in running_metric])
         del running_metric
 
     def save_model(self, model_dir):
@@ -292,25 +360,39 @@ class Trainer():
 
     def test(self, model, test_loader):
         logger.info("Testing..")
+        self.test_loader = test_loader
         model = model.to(self.device)
         running_loss = 0.
-        running_metric = 0.
+        running_metric = [.0] * self.n_heads
         with tqdm(test_loader, unit='batch') as tepoch:
             for data in tepoch:
-                targets = data['labels']['sel'].to(self.device)
-                outputs = self.model_forward(data, model=model)
-                loss = self.criterion(outputs, targets)
+                if self.custom_model:
+                    inputs, targets = model.unpack(data, self.device)
+                else:
+                    inputs, targets = data
+                    inputs = inputs.to(self.device)
+                    targets = targets.to(self.device)
+                outputs = model(inputs)
+                if self.criterion is None:
+                    loss = model.loss(outputs, targets)
+                else:
+                    loss = self.criterion(outputs, targets)
                 running_loss += loss.item()
                 if self.metric:
-                    running_metric += self._evaluate(outputs, targets)
-                    tepoch.set_postfix(loss=running_loss / len(test_loader),
-                                       metric=running_metric / len(test_loader))
+                    evaluated_metrics = self._evaluate(outputs, targets)
+                    for idx, metric in enumerate(running_metric):
+                        metric += evaluated_metrics[idx]
+                        running_metric[idx] = metric
+                    exec(self._create_string(set_type='test'))
                 else:
                     tepoch.set_postfix(loss=loss.item())
-                del targets, outputs, loss
+                del inputs, targets, outputs, loss
         test_loss = running_loss / len(test_loader)
         if self.metric:
-            test_metric = running_metric / len(test_loader)
+            if self.n_heads == 1:
+                test_metric = running_metric / len(test_loader)
+            else:
+                test_metric = [metric / len(test_loader) for metric in running_metric]
             return test_loss, test_metric
         return test_loss
 
@@ -324,12 +406,9 @@ class Trainer():
             if kwarg not in allowed_kwargs:
                 raise TypeError(error_message, kwarg)
 
-    def model_forward(self, data, model=None):
-        inputs = (data['tokenized_inputs']['question'].to(self.device),
-                  data['tokenized_inputs']['columns'].to(self.device))
-        if model:
-            outputs = model(inputs)
-        else:
-            outputs = self.model(inputs)
-        del inputs
-        return outputs
+    def _create_string(self, set_type='train'):
+        string = f'tepoch.set_postfix(loss=running_loss / len(self.{set_type}_loader)'
+        for idx in range(self.n_heads):
+            string += f', metric{idx + 1}=running_metric[{idx}] / len(self.{set_type}_loader)'
+        string += ')'
+        return string

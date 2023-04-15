@@ -10,7 +10,7 @@ model_path = 'models/transformers/'
 
 
 def main(args):
-    model = WikiSQLModel(base_model_type=model_path, attention_type='sqlnet', col_drop=True, local_model_type='bert')
+    model = WikiSQLModel(base_model_type=model_path, local_model_type='bert', inference=False)
     train_set = WikiSQLDataset(type='train', model=model, data_folder_path=args.data_dir)
     val_set = WikiSQLDataset(type='dev', model=model, data_folder_path=args.data_dir)
     datasets = (train_set, val_set)
@@ -28,7 +28,7 @@ def main(args):
         'backend': args.backend
     }
     trainer = Trainer(model, datasets=datasets, epochs=25, batch_size=32,
-                      is_parallel=True, save_history=True, **config)
+                      is_parallel=True, save_history=True, custom_model=True, **config)
     trainer.fit()
 
 
