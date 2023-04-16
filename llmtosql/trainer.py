@@ -80,7 +80,8 @@ class Trainer():
             self.train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=train_sampler is None,
                                        sampler=train_sampler)
             if self.validate:
-                self.val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, sampler=val_sampler)
+                self.val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=val_sampler is None,
+                                             sampler=val_sampler)
             logger.debug(
                 "Processes {}/{} ({:.0f}%) of train data".format(
                     len(self.train_loader.sampler),
