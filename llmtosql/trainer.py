@@ -61,6 +61,8 @@ class Trainer():
                 dist.init_process_group(backend=backend)
                 train_sampler = distributed.DistributedSampler(train_set, num_replicas=dist.get_world_size(),
                                                                rank=dist.get_rank())
+                val_sampler = distributed.DistributedSampler(val_set, num_replicas=dist.get_world_size(),
+                                                               rank=dist.get_rank())
                 # Scale batch size by world size
                 batch_size = batch_size // dist.get_world_size()
                 batch_size = max(batch_size, 1)
@@ -69,6 +71,7 @@ class Trainer():
         else:
             if datasets:
                 train_sampler = None
+                val_sampler = None
             else:
                 logger.warning("Testing only available. No datasets in arguments.")
         if datasets:
@@ -77,7 +80,7 @@ class Trainer():
             self.train_loader = DataLoader(train_set, batch_size=batch_size, shuffle=train_sampler is None,
                                        sampler=train_sampler)
             if self.validate:
-                self.val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True)
+                self.val_loader = DataLoader(val_set, batch_size=batch_size, shuffle=True, sampler=val_sampler)
             logger.debug(
                 "Processes {}/{} ({:.0f}%) of train data".format(
                     len(self.train_loader.sampler),
