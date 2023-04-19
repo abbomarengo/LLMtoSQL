@@ -68,6 +68,8 @@ def generate():
                 "agg": a
             }
         }
+        if all([all([x is None for x in cond]) for cond in c]):
+            c = None
         if c is not None:
             solution["query"]["conds"] = [list(x) for x in c]
         final.append(solution)
