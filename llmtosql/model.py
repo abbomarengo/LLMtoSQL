@@ -58,9 +58,15 @@ class WikiSQLModel(WikiSQLBase):
         if self.cond_head:
             cond_out = self.cond_layer(layer_input)
             if self.col_drop or self.attention_type == 'cross':
-                cond_num_out, cond_column_out, cond_op_out, cond_text_out = cond_out
-                cond_column_out = self.compose_outputs(columns_tokenized, cond_column_out, multi=True)
-                cond_out = (cond_num_out, cond_column_out, cond_op_out, cond_text_out)
+                if len(cond_out) == 1:
+                    cond_out = None
+                else:
+                    cond_num_out, cond_column_out, cond_op_out, cond_text_out = cond_out
+                    if len(cond_column_out.shape) == 2:
+                        cond_column_out = self.compose_outputs(columns_tokenized, cond_column_out, multi=False)
+                    else:
+                        cond_column_out = self.compose_outputs(columns_tokenized, cond_column_out, multi=True)
+                    cond_out = (cond_num_out, cond_column_out, cond_op_out, cond_text_out)
         return sel_out, agg_out, cond_out
 
     def tokenize(self, data):

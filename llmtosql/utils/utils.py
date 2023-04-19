@@ -83,14 +83,15 @@ def plot_history(history: dict) -> None:
         if check:
             train_metrics = list(map(list, zip(*history['train_metric'])))
             val_metrics = list(map(list, zip(*history['val_metric'])))
+            n_metrics = len(train_metrics)
             title = ["Training Loss vs. Validation Loss"]
             sub_titles = [f"{history['metric_type']}_{idx} - Training vs. Validation"
                           for idx in range(len(train_metrics))]
             title.extend(sub_titles)
             fig = make_subplots(
                 rows=2, cols=len(train_metrics),
-                specs=[[{"colspan": 2}, None],
-                       [{}, {}]],
+                specs=[[{"colspan": n_metrics} if metric==0 else None for metric in range(n_metrics)],
+                       list(eval(('{}, '*n_metrics)[:-2]))],
                 subplot_titles=title)
         else:
             fig = make_subplots(

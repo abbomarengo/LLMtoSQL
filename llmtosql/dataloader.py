@@ -75,8 +75,8 @@ class WikiSQLDataset(Dataset):
                 'columns': columns,
                 'input': (str(input), str(columns)),
                 'tokenized_inputs': {
-                    'question': BatchEncoding({k: v.squeeze() for k,v in tokenized_inputs[0].items()}),
-                    'columns': BatchEncoding({k: v.squeeze() for k,v in tokenized_inputs[1].items()})
+                    'question': BatchEncoding({k: v.squeeze() for k, v in tokenized_inputs[0].items()}),
+                    'columns': BatchEncoding({k: v.squeeze() for k, v in tokenized_inputs[1].items()})
                 },
                 'labels': {
                     'sel': int(sel),
