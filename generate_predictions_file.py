@@ -14,7 +14,7 @@ BATCH_SIZE = 32
 
 
 def generate():
-    model = WikiSQLModel(base_model_type=base_model_type, attention_type='cross', inference=True)
+    model = WikiSQLModel(base_model_type=base_model_type, attention_type='cross')
     model = load_model(model, model_path)
     test_set = WikiSQLDataset(type='test', model=model)
     test_loader = DataLoader(test_set, batch_size=BATCH_SIZE)
@@ -29,37 +29,40 @@ def generate():
             predictions = model.predict(outputs)
             sel.extend(predictions[0].tolist())
             agg.extend(predictions[1].tolist())
-            if predictions[2] is None:
-                conds.extend(None)
-            else:
-                for idx, cond in enumerate(predictions[2]):
-                    if len(cond.shape) == 1:
-                        cond = cond.unsqueeze(1)
-                    if idx == 0:
-                        continue
-                    elif idx == 1:
-                        cond_1 = cond.T.tolist()
-                    elif idx == 2:
-                        cond = cond - 1
-                        cond_2 = cond.T.tolist()
-                    elif idx == 3:
-                        outer_list = []
-                        for condition in torch.transpose(predictions[2][3].T, 1, 2).tolist():
-                            batch_list = []
-                            for batch in condition:
-                                word_list = model.tokenizer.convert_ids_to_tokens(batch, skip_special_tokens=True)
-                                batch_list.append(' '.join(word_list))
-                            outer_list.append(batch_list)
-                        cond_3 = outer_list
-                all_conds = []
-                for c1, c2, c3 in zip(cond_1, cond_2, cond_3):
-                    inner_all_conds = []
-                    for b1, b2, b3 in zip(c1, c2, c3):
-                        if b2 == -1:
-                            b1, b2, b3 = None, None, None
-                        inner_all_conds.append((b1, b2, b3))
-                    all_conds.append(inner_all_conds)
-                conds.extend([list(x) for x in zip(*all_conds)])
+            for idx, cond in enumerate(predictions[2]):
+                if len(cond.shape) == 1:
+                    cond = cond.unsqueeze(1)
+                if idx == 0:
+                    max_num_conditions = torch.max(cond).item()
+                    if max_num_conditions == 0:
+                        cond_1,  cond_2, cond_3 = [[None]], [[None]], [[None]]
+                        break
+                elif idx == 1:
+                    cond_1 = cond.T.tolist()
+                    cond_1 = cond_1[:max_num_conditions]
+                elif idx == 2:
+                    cond = cond - 1
+                    cond_2 = cond.T.tolist()
+                    cond_2 = cond_2[:max_num_conditions]
+                elif idx == 3:
+                    outer_list = []
+                    for condition in torch.transpose(predictions[2][3].T, 1, 2).tolist():
+                        batch_list = []
+                        for batch in condition:
+                            word_list = model.tokenizer.convert_ids_to_tokens(batch, skip_special_tokens=True)
+                            batch_list.append(' '.join(word_list))
+                        outer_list.append(batch_list)
+                    cond_3 = outer_list
+                    cond_3 = cond_3[:max_num_conditions]
+            all_conds = []
+            for c1, c2, c3 in zip(cond_1, cond_2, cond_3):
+                inner_all_conds = []
+                for b1, b2, b3 in zip(c1, c2, c3):
+                    if b2 == -1:
+                        b1, b2, b3 = None, None, None
+                    inner_all_conds.append((b1, b2, b3))
+                all_conds.append(inner_all_conds)
+            conds.extend([list(x) for x in zip(*all_conds)])
     final = []
     for s, a, c in zip(sel, agg, conds):
         solution = {
