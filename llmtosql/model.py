@@ -13,7 +13,7 @@ logger = structlog.get_logger('__name__')
 
 class WikiSQLModel(WikiSQLBase):
     def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False,
-                 local_model_type=None, op_out=6, max_conds=4, heads=(True, True, True), inference=True):
+                 local_model_type=None, op_out=6, max_conds=4, heads=(True, True, True)):
         super().__init__(base_model_type, N_lat=N_lat, attention_type=attention_type,
                          col_drop=col_drop, local_model_type=local_model_type, heads=heads)
         self.n_heads = sum(heads)
@@ -31,8 +31,7 @@ class WikiSQLModel(WikiSQLBase):
         self.sel_layer = WikiSQLSelect(self.hidden_dim, attention_type)
         self.agg_layer = WikiSQLSAgg(self.hidden_dim, op_out, attention_type)
         self.cond_layer = WikiSQLConditions(self.tokenizer, self.hidden_dim, self.cond_op_out, self.seq_len,
-                                            self.vocab_size, attention_type, max_conds=self.max_conds,
-                                            inference=inference)
+                                            self.vocab_size, attention_type, max_conds=self.max_conds)
         self.soft1 = torch.nn.Softmax(dim=-1)
         self.soft2 = torch.nn.Softmax(dim=1)
         self.logsoft1 = torch.nn.LogSoftmax(dim=-1)

@@ -10,7 +10,7 @@ model_path = 'models/transformers/'
 
 
 def main(args):
-    model = WikiSQLModel(base_model_type=model_path, local_model_type='bert', inference=False)
+    model = WikiSQLModel(base_model_type=model_path, local_model_type='bert')
     train_set = WikiSQLDataset(type='train', model=model, data_folder_path=args.data_dir)
     val_set = WikiSQLDataset(type='dev', model=model, data_folder_path=args.data_dir)
     datasets = (train_set, val_set)

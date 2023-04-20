@@ -10,7 +10,7 @@ logger = structlog.get_logger('__name__')
 
 
 class WikiSQLConditions(nn.Module):
-    def __init__(self, tokenizer, hidden_dim, cond_op_out, seq_len, vocab_size, attention_type, max_conds=4, inference=True):
+    def __init__(self, tokenizer, hidden_dim, cond_op_out, seq_len, vocab_size, attention_type, max_conds=4):
         super().__init__()
         self.tokenizer = tokenizer
         self.hidden_dim = hidden_dim
@@ -18,7 +18,6 @@ class WikiSQLConditions(nn.Module):
         self.vocab_size = vocab_size
         self.attention_type = attention_type
         self.max_conds = max_conds
-        self.inference = inference
         self.pred_function = Softmax(dim=-1)
         if self.attention_type == 'cross':
             # Step 1 - condition number
@@ -52,10 +51,7 @@ class WikiSQLConditions(nn.Module):
         # Prep for next steps
         dim_0 = data[0].shape[0]
         dim_1 = data[0].shape[1]
-        if self.inference:
-            dim_2 = torch.max(num_conditions).item()
-        else:
-            dim_2 = self.max_conds
+        dim_2 = self.max_conds
         if dim_2 == 0:
             return cond_num_out
         # Step 2 - condition columns
