@@ -12,7 +12,7 @@ base_model_type = 'bert-base-uncased'
 path_file_output = 'model_output/test_results.jsonl'
 BATCH_SIZE = 2
 
-
+# TODO: check function for bug [null, null, null]
 def generate():
     model = WikiSQLModel(base_model_type=base_model_type, attention_type='cross')
     model = load_model(model, model_path)
