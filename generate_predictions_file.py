@@ -10,13 +10,14 @@ from llmtosql.utils.utils import load_model
 model_path = 'model_output/model.pth'
 base_model_type = 'bert-base-uncased'
 path_file_output = 'model_output/test_results.jsonl'
+set_type = 'test'
 BATCH_SIZE = 2
 
 # TODO: check function for bug [null, null, null]
 def generate():
     model = WikiSQLModel(base_model_type=base_model_type, attention_type='cross')
     model = load_model(model, model_path)
-    test_set = WikiSQLDataset(type='test', model=model)
+    test_set = WikiSQLDataset(type=set_type, model=model)
     test_loader = DataLoader(test_set, batch_size=BATCH_SIZE)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)

@@ -2,6 +2,7 @@ import torch
 from torch.utils.data import Dataset
 from transformers import BatchEncoding
 import os
+import re
 import structlog
 from tqdm import tqdm
 
@@ -29,7 +30,11 @@ class WikiSQLDataset(Dataset):
                 columns = ', '.join(self.collate_table_data[table])
                 self.data[idx]['columns'] = columns
                 self.data[idx]['tokenized_inputs'] = model.tokenize((text, columns))
-                self.data[idx]['tokenized_cond_3'] = [model.tokenize((str(cond[2]), str(cond[2]))) for cond in conds]
+                self.data[idx]['cond_3'] = [self._generate_mapping(text.split(),
+                              [fr'(?i)\b\w*{token.lower()}\w*\b' for token in
+                               self._clean_text(str(cond[2])).split()],
+                               self._clean_text(str(cond[2])).split())
+                               for cond in conds]
                 self.data[idx]['cond_num'] = cond_num
 
     def __len__(self):
@@ -42,34 +47,23 @@ class WikiSQLDataset(Dataset):
         agg = self.data[item]['sql']['agg']
         cond_1 = [int(cond[0]) for cond in self.data[item]['sql']['conds']]
         cond_2 = [int(cond[1]) + 1 for cond in self.data[item]['sql']['conds']]
+        cond_3 = self.data[item]['cond_3']
         if self.model:
+            if self.model.max_conds != self.maxcondsLength:
+                raise AttributeError(f'Model max condition out does not much max condition out in labels. '
+                                     f'Found {self.maxcondsLength} max condition in labels.')
+            cond_0 = self.data[item]['cond_num']
             if len(cond_1) != self.maxcondsLength:
                 list_extension = [0] * (self.maxcondsLength - len(cond_1))
                 cond_1.extend(list_extension)
             if len(cond_2) != self.maxcondsLength:
                 list_extension = [0] * (self.maxcondsLength - len(cond_2))
                 cond_2.extend(list_extension)
-            if self.model.max_conds != self.maxcondsLength:
-                raise AttributeError(f'Model max condition out does not much max condition out in labels. '
-                                     f'Found {self.maxcondsLength} max condition in labels.')
-            cond_0 = self.data[item]['cond_num']
-            seq_len = self.model.seq_len
-            empty_tensor = torch.zeros(seq_len - 1, dtype=torch.int)
+            if len(cond_3) != self.maxcondsLength:
+                list_extension = [0] * (self.maxcondsLength - len(cond_3))
+                cond_3.extend(list_extension)
             columns = self.data[item]['columns']
             tokenized_inputs = self.data[item]['tokenized_inputs']
-            tokenized_cond_3 = self.data[item]['tokenized_cond_3']
-            try:
-                cond_3 = [BatchEncoding({k: v[:, 1:].squeeze() for k, v in cond[0].items()})
-                          for cond in tokenized_cond_3]
-            except:
-                cond_3 = [BatchEncoding({'input_ids': empty_tensor,
-                                         'token_type_ids': empty_tensor,
-                                         'attention_mask': empty_tensor})]
-            if len(cond_3) != self.maxcondsLength:
-                list_extension = [BatchEncoding({'input_ids': empty_tensor,
-                                                 'token_type_ids': empty_tensor,
-                                                 'attention_mask': empty_tensor})]*(self.maxcondsLength-len(cond_3))
-                cond_3.extend(list_extension)
             return {
                 'table_id': str(table),
                 'columns': columns,
@@ -105,3 +99,23 @@ class WikiSQLDataset(Dataset):
                     'conds': (cond_1, cond_2, cond_3)
                 }
             }
+
+    def _generate_mapping(self, question_token_list, pattern_list, gt):
+        index_list = []
+        for pattern, key in zip(pattern_list, gt):
+            for idx, token in enumerate(question_token_list):
+                if (re.findall(pattern, self._clean_text(token))) or \
+                        (key.lower() == self._clean_text(token)) or \
+                        ((re.findall(r'^[-+]?(?:[0-9]+,)*[0-9]+(?:\.[0-9]+)?$', key)) and
+                         (re.findall(r'^[-+]?(?:[0-9]+,)*[0-9]+(?:\.[0-9]+)?$', self._clean_text(token))) and
+                         (float(self._clean_text(token)) == float(self._clean_text(key)))):
+                    index_list.append(idx)
+        return [index_list[0], index_list[-1] - index_list[0]]
+
+    def _clean_text(self, text):
+        char_list = '?"()+,$[]{};*'
+        for char in char_list:
+            text = text.replace(char, '')
+        text = text.replace("'s", '')
+        text = text.replace("'", '')
+        return text.lower()
