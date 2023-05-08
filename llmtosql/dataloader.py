@@ -132,16 +132,25 @@ class WikiSQLDataset(Dataset):
             for start in first_tokens:
                 if (end - start + 1) == len(gt):
                     index_list = [start, end]
+                else:
+                    removed = sum([it in question_token_list for it in '?+$[](){}*#.%"`'])
+                    if (end - start + 1) == len(gt) + removed:
+                        index_list = [start, end]
         if index_list:
             return [index_list[0], index_list[-1] - index_list[0] + 1]
         else:
+            print(token_dict, gt)
+            for pattern, key in zip(pattern_list, gt):
+                for idx, token in enumerate(question_token_list):
+                    print(key.lower(), self._clean_text(token))
             return [0, 0]
 
     def _clean_text(self, text):
-        char_list = '?"+$[](){}*#.%'
+        char_list = '?+$[](){}*#.%"`'
         for char in char_list:
             text = text.replace(char, '')
-        text = text.replace("'s", '')
+        if re.findall(r'\b\'s', text):
+            text = text.replace("'s", '')
         text = text.replace("'", '')
         text = re.sub(r'\b,\s', ' ', text)
         text = re.sub(r'\b;\s', ' ', text)
@@ -153,8 +162,10 @@ class WikiSQLDataset(Dataset):
     @classmethod
     def _generate_cond3(cls, lst):
         for text in lst:
-            char_list = '"?>'
+            char_list = '"?>`'
             for char in char_list:
+                if char == '>' and len(text) == 1:
+                    continue
                 text = text.replace(char, '')
             yield text.lower()
 
