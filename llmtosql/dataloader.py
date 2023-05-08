@@ -5,6 +5,7 @@ import os
 import re
 import structlog
 from tqdm import tqdm
+from collections import defaultdict
 
 logger = structlog.get_logger('__name__')
 
@@ -37,6 +38,12 @@ class WikiSQLDataset(Dataset):
                                for cond in conds]
                 self.data[idx]['cond_num'] = cond_num
 
+                cond_check = [cond[2] for cond in conds]
+                self.data[idx]['cond_check'] = cond_check
+                cleaned_q = list(self._generate_cond3(text.split()))
+                self.data[idx]['check'] = [self._digitize(' '.join(cleaned_q[cond_range[0]:cond_range[0] + cond_range[1]]))
+                                           for cond_range in self.data[idx]['cond_3']]
+
     def __len__(self):
         return len(self.data)
 
@@ -60,10 +67,13 @@ class WikiSQLDataset(Dataset):
                 list_extension = [0] * (self.maxcondsLength - len(cond_2))
                 cond_2.extend(list_extension)
             if len(cond_3) != self.maxcondsLength:
-                list_extension = [0] * (self.maxcondsLength - len(cond_3))
+                list_extension = [[0, 0]] * (self.maxcondsLength - len(cond_3))
                 cond_3.extend(list_extension)
             columns = self.data[item]['columns']
             tokenized_inputs = self.data[item]['tokenized_inputs']
+
+            check = self.data[item]['check']
+            conds__3 = self.data[item]['cond_check']
             return {
                 'table_id': str(table),
                 'columns': columns,
@@ -76,7 +86,8 @@ class WikiSQLDataset(Dataset):
                     'sel': int(sel),
                     'agg': int(agg),
                     'conds': (cond_0, cond_1, cond_2, cond_3)
-                }
+                },
+                'CHECK': (conds__3, check)
             }
         else:
             if len(cond_1) != self.maxcondsLength:
@@ -101,21 +112,67 @@ class WikiSQLDataset(Dataset):
             }
 
     def _generate_mapping(self, question_token_list, pattern_list, gt):
-        index_list = []
+        token_dict = defaultdict(list)
         for pattern, key in zip(pattern_list, gt):
             for idx, token in enumerate(question_token_list):
-                if (re.findall(pattern, self._clean_text(token))) or \
-                        (key.lower() == self._clean_text(token)) or \
-                        ((re.findall(r'^[-+]?(?:[0-9]+,)*[0-9]+(?:\.[0-9]+)?$', key)) and
-                         (re.findall(r'^[-+]?(?:[0-9]+,)*[0-9]+(?:\.[0-9]+)?$', self._clean_text(token))) and
-                         (float(self._clean_text(token)) == float(self._clean_text(key)))):
-                    index_list.append(idx)
-        return [index_list[0], index_list[-1] - index_list[0]]
+                if (len(key) == 1):
+                    if key.lower() == self._clean_text(token):
+                        token_dict[key].append(idx)
+                else:
+                    if (re.findall(pattern, self._clean_text(token))) or \
+                            (key.lower() == self._clean_text(token)) or \
+                            ((re.findall(r'^[-+]?(?:[0-9]+)*[0-9]+(?:\.[0-9]+)?$', key)) and
+                             (re.findall(r'^[-+]?(?:[0-9]+)*[0-9]+(?:\.[0-9]+)?$', self._clean_text(token))) and
+                             (float(self._clean_text(token)) == float(self._clean_text(key)))):
+                        token_dict[key].append(idx)
+        first_tokens = set(token_dict[gt[0]])
+        end_tokens = set(token_dict[gt[-1]])
+        index_list = None
+        for end in end_tokens:
+            for start in first_tokens:
+                if (end - start + 1) == len(gt):
+                    index_list = [start, end]
+        if index_list:
+            return [index_list[0], index_list[-1] - index_list[0] + 1]
+        else:
+            return [0, 0]
 
     def _clean_text(self, text):
-        char_list = '?"()+,$[]{};*'
+        char_list = '?"+$[](){}*#.%'
         for char in char_list:
             text = text.replace(char, '')
         text = text.replace("'s", '')
         text = text.replace("'", '')
+        text = re.sub(r'\b,\s', ' ', text)
+        text = re.sub(r'\b;\s', ' ', text)
+        if len(text) > 1:
+            text = text.rstrip(";")
+            text = text.rstrip(",")
         return text.lower()
+
+    @classmethod
+    def _generate_cond3(cls, lst):
+        for text in lst:
+            char_list = '?>"$'
+            for char in char_list:
+                text = text.replace(char, '')
+            yield text.lower()
+
+    @classmethod
+    def _digitize(cls, text):
+        text = text.strip(",")
+        text = text.rstrip(";")
+        try:
+            if 'jr' not in text.split()[-1].lower():
+                text = text.rstrip(".")
+        except:
+            pass
+        text = text.strip("'")
+        if text.endswith("'s"):
+            text = re.sub(r"'s", '', text)
+        if len(text.split()) == 1:
+            text = text.replace('#', '')
+        if (('(' in text) and not (')' in text)) or ((')' in text) and not ('(' in text)):
+            text = text.strip("(")
+            text = text.strip(")")
+        return text
