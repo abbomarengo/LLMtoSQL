@@ -32,7 +32,7 @@ class WikiSQLDataset(Dataset):
                 self.data[idx]['columns'] = columns
                 self.data[idx]['tokenized_inputs'] = model.tokenize((text, columns))
                 self.data[idx]['cond_3'] = [self._generate_mapping(text.split(),
-                              [fr'(?i)\b\w*{token.lower()}\w*\b' for token in
+                              [fr'(?i)\b{token.lower()}\b' for token in
                                self._clean_text(str(cond[2])).split()],
                                self._clean_text(str(cond[2])).split())
                                for cond in conds]
@@ -153,7 +153,7 @@ class WikiSQLDataset(Dataset):
     @classmethod
     def _generate_cond3(cls, lst):
         for text in lst:
-            char_list = '?>"'
+            char_list = '"?>'
             for char in char_list:
                 text = text.replace(char, '')
             yield text.lower()
@@ -163,7 +163,7 @@ class WikiSQLDataset(Dataset):
         text = text.strip(",")
         text = text.rstrip(";")
         try:
-            if 'jr' not in text.split()[-1].lower():
+            if ('jr' not in text.split()[-1].lower()) and (text.count('.') == 1):
                 text = text.rstrip(".")
         except:
             pass
