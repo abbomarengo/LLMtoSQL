@@ -153,7 +153,7 @@ class WikiSQLDataset(Dataset):
     @classmethod
     def _generate_cond3(cls, lst):
         for text in lst:
-            char_list = '?>"$'
+            char_list = '?>"'
             for char in char_list:
                 text = text.replace(char, '')
             yield text.lower()
