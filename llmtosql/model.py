@@ -126,7 +126,7 @@ class WikiSQLModel(WikiSQLBase):
                     elif idx == 1:
                         loss += self.criterion(cond_out, torch.transpose(torch.stack(cond_lab), 0, 1))
                     elif idx == 2:
-                        loss += self.criterion(torch.transpose(cond_out, 1, 2 ),
+                        loss += self.criterion(torch.transpose(cond_out, 1, 2),
                                                torch.transpose(torch.stack(cond_lab), 0, 1))
                     else:
                         for idx, cond_lab_text in enumerate(cond_lab):
