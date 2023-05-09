@@ -131,7 +131,7 @@ class WikiSQLModel(WikiSQLBase):
                     else:
                         for idx, cond_lab_text in enumerate(cond_lab):
                             loss += self.criterion(torch.transpose(cond_out[:, :, idx, :], 1, 2),
-                                                   cond_lab_text['input_ids'].long())
+                                                   torch.transpose(torch.stack(cond_lab_text), 0, 1))
         # losses = [self.criterion(output, target) for output, target in zip(outputs, targets)]
         # loss = torch.stack(losses, dim=0).sum(dim=0)
         return loss
@@ -158,8 +158,7 @@ class WikiSQLModel(WikiSQLBase):
                              .cpu().detach().numpy()).all(axis=(0)).mean()
                         )
                     else:
-                        t = torch.transpose(
-                            torch.transpose(torch.stack([lab['input_ids'] for lab in cond_target]), 0, 1), 1, 2)
+                        t = torch.transpose(torch.stack([torch.stack(lab) for lab in cond_target]), 0, 2)
                         acc_cond.append(
                             (cond_pred.cpu().detach().numpy() == t.cpu().detach().numpy()).all(axis=(0, 1)).mean()
                         )
