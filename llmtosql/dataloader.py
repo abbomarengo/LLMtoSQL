@@ -139,14 +139,11 @@ class WikiSQLDataset(Dataset):
         if index_list:
             return [index_list[0], index_list[-1] - index_list[0] + 1]
         else:
-            print(token_dict, gt)
-            for pattern, key in zip(pattern_list, gt):
-                for idx, token in enumerate(question_token_list):
-                    print(key.lower(), self._clean_text(token))
             return [0, 0]
 
     def _clean_text(self, text):
-        char_list = '?+$[](){}*#.%"`'
+        text = text.lower()
+        char_list = '?+$[](){}*#.%"`|'
         for char in char_list:
             text = text.replace(char, '')
         if re.findall(r'\b\'s', text):
@@ -157,14 +154,16 @@ class WikiSQLDataset(Dataset):
         if len(text) > 1:
             text = text.rstrip(";")
             text = text.rstrip(",")
-        return text.lower()
+        return text
 
     @classmethod
     def _generate_cond3(cls, lst):
         for text in lst:
-            char_list = '"?>`'
+            char_list = '"?><`'
             for char in char_list:
                 if char == '>' and len(text) == 1:
+                    continue
+                if char == '"' and re.findall(r'^(?!$|.*\'[^\x22]+$)(?:([0-9]+)\')?(?:([0-9]+)\x22?)?$', text):
                     continue
                 text = text.replace(char, '')
             yield text.lower()
@@ -178,12 +177,20 @@ class WikiSQLDataset(Dataset):
                 text = text.rstrip(".")
         except:
             pass
+        if re.findall((r'^[-+]?(?:[0-9]+)*[0-9]+(?:\.[0-9]+)?\.$'), text):
+            text = text.rstrip(".")
         text = text.strip("'")
         if text.endswith("'s"):
             text = re.sub(r"'s", '', text)
+        if text.endswith("´s"):
+            text = re.sub(r"´s", '', text)
         if len(text.split()) == 1:
             text = text.replace('#', '')
         if (('(' in text) and not (')' in text)) or ((')' in text) and not ('(' in text)):
             text = text.strip("(")
             text = text.strip(")")
+        if (' ( ' in text) and not (' )' in text):
+            text = text + ' )'
+        if (' [ ' in text) and not (' ]' in text):
+            text = text + ' ]'
         return text

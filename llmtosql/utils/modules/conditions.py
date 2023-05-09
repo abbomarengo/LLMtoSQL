@@ -10,12 +10,11 @@ logger = structlog.get_logger('__name__')
 
 
 class WikiSQLConditions(nn.Module):
-    def __init__(self, tokenizer, hidden_dim, cond_op_out, seq_len, vocab_size, attention_type, max_conds=4):
+    def __init__(self, tokenizer, hidden_dim, cond_op_out, cond_text_out, attention_type, max_conds=4):
         super().__init__()
         self.tokenizer = tokenizer
         self.hidden_dim = hidden_dim
-        self.seq_len = seq_len
-        self.vocab_size = vocab_size
+        self.cond_text_out = cond_text_out
         self.attention_type = attention_type
         self.max_conds = max_conds
         self.pred_function = Softmax(dim=-1)
@@ -36,7 +35,7 @@ class WikiSQLConditions(nn.Module):
             self.cond_text_layer = WikiSQLBaseModule(self.hidden_dim, self.hidden_dim, attention_type)
             self.ff4 = nn.Sequential(nn.Linear(self.hidden_dim, self.hidden_dim),
                                      nn.Tanh(), nn.Linear(self.hidden_dim, self.hidden_dim))
-            self.text_out = nn.Linear(self.hidden_dim, self.vocab_size)
+            self.text_out = nn.Linear(self.hidden_dim, self.cond_text_out)
         elif self.attention_type == 'sqlnet':
             logger.error(f'SQLNET not implemented for the Condition Head')
             raise TypeError(f'SQLNET not implemented for the Condition Head')
@@ -75,5 +74,7 @@ class WikiSQLConditions(nn.Module):
         concat_t = torch.cat([cross_transpose_t]*dim_2, dim=-1)
         reshaped_in_t = concat_t.view(dim_0, dim_1, dim_2, self.hidden_dim)
         feed_forward_t = self.ff4(reshaped_in_t)
+        feed_forward_t_transpose = torch.transpose(feed_forward_t, 1, 3) # NEW
         cond_text_out = self.text_out(feed_forward_t)
+        cond_text_out = torch.transpose(cond_text_out, 1, 3) # NEW
         return cond_num_out, cond_column_out, cond_op_out, cond_text_out
