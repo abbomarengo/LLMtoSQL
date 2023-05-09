@@ -67,7 +67,7 @@ class WikiSQLDataset(Dataset):
                 list_extension = [0] * (self.maxcondsLength - len(cond_2))
                 cond_2.extend(list_extension)
             if len(cond_3) != self.maxcondsLength:
-                list_extension = [[0, 0]] * (self.maxcondsLength - len(cond_3))
+                list_extension = [(0, 0)] * (self.maxcondsLength - len(cond_3))
                 cond_3.extend(list_extension)
             columns = self.data[item]['columns']
             tokenized_inputs = self.data[item]['tokenized_inputs']

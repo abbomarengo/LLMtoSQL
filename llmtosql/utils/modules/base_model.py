@@ -65,7 +65,10 @@ class WikiSQLBase(nn.Module):
                 else:
                     inner_cond = []
                     for tensor in cond:
-                        inner_cond.append(tensor.to(device))
+                        if isinstance(cond, torch.Tensor):
+                            inner_cond.append(tensor.to(device))
+                        else:
+                            inner_cond.append([t.to(device) for t in tensor])
                     conds_labels.append(inner_cond)
         return inputs, (sel_labels, agg_labels, conds_labels)
 
