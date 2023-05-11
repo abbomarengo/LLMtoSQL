@@ -26,7 +26,7 @@ def generate():
     conds = []
     with tqdm(test_loader, unit='batch') as tepoch:
         for data in tepoch:
-            q = data['input'][0]
+            questions = data['input'][0]
             inputs, _ = model.unpack(data, device)
             outputs = model(inputs)
             predictions = model.predict(outputs)
@@ -50,8 +50,9 @@ def generate():
                 elif idx == 3:
                     outer_list = []
                     for condition in torch.transpose(predictions[2][3].T, 1, 2).tolist():
-                        batch_list = [WikiSQLDataset._digitize(' '.join(q[cond_range[0]:cond_range[0] + cond_range[1]]))
-                                      for cond_range in condition]
+                        batch_list = [
+                            WikiSQLDataset._digitize(' '.join((q.split())[cond_range[0]:cond_range[0] + cond_range[1]]))
+                            for cond_range, q in zip(condition, questions)]
                         outer_list.append(batch_list)
                     cond_3 = outer_list
                     cond_3 = cond_3[:max_num_conditions]
