@@ -76,7 +76,7 @@ def generate():
         if all([all([x is None for x in cond]) for cond in c]):
             c = None
         if c is not None:
-            solution["query"]["conds"] = [list(x) for x in c]
+            solution["query"]["conds"] = [list(x) for x in c if x != (None, None, None)]
         final.append(solution)
     with open(path_file_output, 'w+') as f:
         for line in final:
