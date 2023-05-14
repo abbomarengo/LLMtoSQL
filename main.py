@@ -3,7 +3,6 @@ from llmtosql.trainer import Trainer
 from llmtosql.dataloader import WikiSQLDataset
 from llmtosql.utils.utils import plot_history, load_model, load_history
 import argparse
-import sys
 import os
 import json
 model_path = 'models/transformers/'
@@ -11,6 +10,10 @@ model_path = 'models/transformers/'
 
 def main(args):
     model = WikiSQLModel(base_model_type=model_path, local_model_type='bert')
+    try:
+        model = load_model(model, 'model_output/model.pth')
+    except Exception as e:
+        print(f'No model loaded - {e}')
     train_set = WikiSQLDataset(type='train', model=model, data_folder_path=args.data_dir)
     val_set = WikiSQLDataset(type='dev', model=model, data_folder_path=args.data_dir)
     datasets = (train_set, val_set)

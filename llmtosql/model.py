@@ -29,7 +29,7 @@ class WikiSQLModel(WikiSQLBase):
         self.text_out = text_out
         self.sel_layer = WikiSQLSelect(self.hidden_dim, attention_type)
         self.agg_layer = WikiSQLSAgg(self.hidden_dim, op_out, attention_type)
-        self.cond_layer = WikiSQLConditions(self.tokenizer, self.hidden_dim, self.cond_op_out,
+        self.cond_layer = WikiSQLConditions(self.hidden_dim, self.cond_op_out,
                                             self.text_out, attention_type, max_conds=self.max_conds)
         self.soft1 = torch.nn.Softmax(dim=-1)
         self.soft2 = torch.nn.Softmax(dim=1)
