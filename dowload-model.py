@@ -1,4 +1,9 @@
 from transformers import AutoModel, AutoTokenizer
+import os
+if not os.path.exists('models/transformers/'):
+   os.makedirs('models/transformers/')
+if not os.path.exists('model_output/'):
+   os.makedirs('model_output/')
 model_path = 'models/transformers/' # will be created automatically if not exists
 
 #%% download and save the model to local directory
