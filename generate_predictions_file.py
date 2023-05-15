@@ -10,13 +10,14 @@ from llmtosql.utils.utils import load_model
 model_path = 'model_output/model.pth'
 base_model_type = 'bert-base-uncased'
 path_file_output = 'model_output/test_results.jsonl'
+set_type = 'test'
 BATCH_SIZE = 2
 
-
+# TODO: check function for bug [null, null, null]
 def generate():
     model = WikiSQLModel(base_model_type=base_model_type, attention_type='cross')
     model = load_model(model, model_path)
-    test_set = WikiSQLDataset(type='test', model=model)
+    test_set = WikiSQLDataset(type=set_type, model=model)
     test_loader = DataLoader(test_set, batch_size=BATCH_SIZE)
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     model = model.to(device)
@@ -25,6 +26,7 @@ def generate():
     conds = []
     with tqdm(test_loader, unit='batch') as tepoch:
         for data in tepoch:
+            questions = data['input'][0]
             inputs, _ = model.unpack(data, device)
             outputs = model(inputs)
             predictions = model.predict(outputs)
@@ -48,10 +50,9 @@ def generate():
                 elif idx == 3:
                     outer_list = []
                     for condition in torch.transpose(predictions[2][3].T, 1, 2).tolist():
-                        batch_list = []
-                        for batch in condition:
-                            word_list = model.tokenizer.convert_ids_to_tokens(batch, skip_special_tokens=True)
-                            batch_list.append(' '.join(word_list))
+                        batch_list = [
+                            WikiSQLDataset._digitize(' '.join((q.split())[cond_range[0]:cond_range[0] + cond_range[1]]))
+                            for cond_range, q in zip(condition, questions)]
                         outer_list.append(batch_list)
                     cond_3 = outer_list
                     cond_3 = cond_3[:max_num_conditions]
@@ -75,7 +76,7 @@ def generate():
         if all([all([x is None for x in cond]) for cond in c]):
             c = None
         if c is not None:
-            solution["query"]["conds"] = [list(x) for x in c]
+            solution["query"]["conds"] = [list(x) for x in c if x != (None, None, None)]
         final.append(solution)
     with open(path_file_output, 'w+') as f:
         for line in final:

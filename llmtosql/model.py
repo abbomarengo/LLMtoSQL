@@ -13,7 +13,7 @@ logger = structlog.get_logger('__name__')
 
 class WikiSQLModel(WikiSQLBase):
     def __init__(self, base_model_type, N_lat=None, attention_type='cross', col_drop=False,
-                 local_model_type=None, op_out=6, max_conds=4, heads=(True, True, True)):
+                 local_model_type=None, op_out=6, text_out=2, max_conds=4, heads=(True, True, True)):
         super().__init__(base_model_type, N_lat=N_lat, attention_type=attention_type,
                          col_drop=col_drop, local_model_type=local_model_type, heads=heads)
         self.n_heads = sum(heads)
@@ -26,12 +26,11 @@ class WikiSQLModel(WikiSQLBase):
         self.criterion = torch.nn.CrossEntropyLoss()
         if not self.hidden_dim:
             self.hidden_dim = self.model.config.hidden_size
-        self.seq_len = self.model.config.max_position_embeddings
-        self.vocab_size = self.model.config.vocab_size
+        self.text_out = text_out
         self.sel_layer = WikiSQLSelect(self.hidden_dim, attention_type)
         self.agg_layer = WikiSQLSAgg(self.hidden_dim, op_out, attention_type)
-        self.cond_layer = WikiSQLConditions(self.tokenizer, self.hidden_dim, self.cond_op_out, self.seq_len,
-                                            self.vocab_size, attention_type, max_conds=self.max_conds)
+        self.cond_layer = WikiSQLConditions(self.hidden_dim, self.cond_op_out,
+                                            self.text_out, attention_type, max_conds=self.max_conds)
         self.soft1 = torch.nn.Softmax(dim=-1)
         self.soft2 = torch.nn.Softmax(dim=1)
         self.logsoft1 = torch.nn.LogSoftmax(dim=-1)
@@ -127,12 +126,12 @@ class WikiSQLModel(WikiSQLBase):
                     elif idx == 1:
                         loss += self.criterion(cond_out, torch.transpose(torch.stack(cond_lab), 0, 1))
                     elif idx == 2:
-                        loss += self.criterion(torch.transpose(cond_out, 1, 2 ),
+                        loss += self.criterion(torch.transpose(cond_out, 1, 2),
                                                torch.transpose(torch.stack(cond_lab), 0, 1))
                     else:
                         for idx, cond_lab_text in enumerate(cond_lab):
                             loss += self.criterion(torch.transpose(cond_out[:, :, idx, :], 1, 2),
-                                                   cond_lab_text['input_ids'].long())
+                                                   torch.transpose(torch.stack(cond_lab_text), 0, 1))
         # losses = [self.criterion(output, target) for output, target in zip(outputs, targets)]
         # loss = torch.stack(losses, dim=0).sum(dim=0)
         return loss
@@ -159,8 +158,7 @@ class WikiSQLModel(WikiSQLBase):
                              .cpu().detach().numpy()).all(axis=(0)).mean()
                         )
                     else:
-                        t = torch.transpose(
-                            torch.transpose(torch.stack([lab['input_ids'] for lab in cond_target]), 0, 1), 1, 2)
+                        t = torch.transpose(torch.stack([torch.stack(lab) for lab in cond_target]), 0, 2)
                         acc_cond.append(
                             (cond_pred.cpu().detach().numpy() == t.cpu().detach().numpy()).all(axis=(0, 1)).mean()
                         )
